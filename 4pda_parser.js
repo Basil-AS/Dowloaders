@@ -1,178 +1,149 @@
 (async () => {
   console.clear();
+  const log = (...a)=>console.log(...a);
 
-  // --- Создаем и показываем оверлей (экран загрузки) ---
-  const overlay = document.createElement('div');
-  overlay.id = 'pda-scraper-overlay';
-  Object.assign(overlay.style, {
-    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.9)', zIndex: '9999',
-    display: 'flex', justifyContent: 'center', alignItems: 'center',
-    color: 'white', fontSize: '22px', fontFamily: 'sans-serif',
-    textAlign: 'center', lineHeight: '1.5', flexDirection: 'column'
-  });
-  
-  const progressText = document.createElement('div');
-  overlay.appendChild(progressText);
-  document.body.appendChild(overlay);
-  
-  const mainContent = document.querySelector('body > div[style*="min-width"]');
-  if(mainContent) mainContent.style.display = 'none';
+  // ---- утилиты ----
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const decode1251 = async (res) => new TextDecoder('windows-1251').decode(await res.arrayBuffer());
+  const nowYMD = () => {
+    const d = new Date();
+    const p = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+  };
+  const sanitize = s => (s||'').replace(/[<>:"/\\|?*]/g,'-').replace(/\s+/g,' ').trim();
 
-  try {
-    progressText.innerHTML = '🚀 Анализирую страницу 4PDA...';
-    console.log("🚀 Начинаю скачивание с 4PDA...");
+  // ---- проверка страницы темы ----
+  const url = new URL(location.href);
+  if (!url.searchParams.has('showtopic')) { alert('Открой страницу темы (showtopic=...)'); return; }
+  const topicId = url.searchParams.get('showtopic');
+  const baseUrl = `https://4pda.to/forum/index.php?showtopic=${topicId}`;
+  const topicTitle = (document.querySelector('h1[itemprop="name"]')?.textContent || document.title || '').trim();
 
-    // --- Вспомогательные функции ---
-    function sanitizeFilename(name) {
-      return name.replace(/[<>:"/\\|?*]/g, '-').replace(/\s+/g, ' ').trim() || '4pda-download';
-    }
+  // ---- надёжное вычисление пагинации ----
+  let perPage = 20, lastStart = 0;
 
-    function getFormattedDate() {
-      const now = new Date();
-      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    }
-
-    // --- Определяем режим работы (Тема или Поиск) ---
-    const urlParams = new URLSearchParams(window.location.search);
-    const isTopicPage = urlParams.has('showtopic');
-    const isSearchPage = urlParams.get('act') === 'search';
-
-    let title, totalPages = 1, baseUrl;
-
-    if (isTopicPage) {
-        console.log("Режим: Скачивание темы.");
-        title = document.querySelector('h1[itemprop="name"]')?.textContent.trim() || document.title;
-        const topicId = urlParams.get('showtopic');
-        baseUrl = `https://4pda.to/forum/index.php?showtopic=${topicId}`;
-    } else if (isSearchPage) {
-        console.log("Режим: Скачивание результатов поиска.");
-        const query = urlParams.get('query');
-        title = query ? `Результаты поиска по '${query}'` : 'Результаты поиска';
-        baseUrl = window.location.href.split('&st=')[0];
-    } else {
-        throw new Error("Не удалось определить режим работы. Скрипт работает только на страницах тем ('showtopic=...') или результатов поиска ('act=search...').");
-    }
-
-    // ИЗМЕНЕНО: Селектор для пагинации
-    const lastPageLink = document.querySelector('.page-nav > ul > li:last-child > a');
-    if (lastPageLink) {
-        const pagesMatch = lastPageLink.textContent.match(/(\d+)/);
-        if (pagesMatch) {
-            totalPages = parseInt(pagesMatch[1], 10);
-        } else {
-            // Если последняя кнопка не число, ищем по-другому
-            const pageMenu = document.querySelector('.pagelink-menu');
-            if (pageMenu) {
-                const match = pageMenu.textContent.match(/(\d+)\s+страниц/);
-                if (match) totalPages = parseInt(match[1], 10);
-            }
-        }
-    }
-    
-    console.log(`Заголовок: '${title}'`);
-    console.log(`Всего страниц для скачивания: ${totalPages}`);
-    
-    let allPostsText = `Источник: ${title}\n`;
-    allPostsText += `URL: ${window.location.href.split('&st=')[0]}\n`;
-    allPostsText += `Всего страниц: ${totalPages}\n`;
-    allPostsText += "================================================================\n\n";
-
-    // --- Проходим по всем страницам ---
-    for (let i = 0; i < totalPages; i++) {
-      const pageNum = i + 1;
-      const start = i * 20; // на 4pda 20 постов на странице (стандарт)
-      const pageUrl = `${baseUrl}&st=${start}`;
-      
-      progressText.innerHTML = `📥 Загружаю страницу ${pageNum} из ${totalPages}...`;
-      console.log(`📥 Загружаю страницу ${pageNum} из ${totalPages} (${pageUrl})`);
-
-      const response = await fetch(pageUrl);
-      if (!response.ok) {
-        console.warn(`❗️ Не удалось загрузить страницу ${pageNum}. Код ответа: ${response.status}. Пропускаю.`);
-        continue;
-      }
-      const buffer = await response.arrayBuffer();
-      const decoder = new TextDecoder('windows-1251');
-      const html = decoder.decode(buffer);
-      
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-
-      // ✅ ИЗМЕНЕНО: Главный селектор для поиска постов
-      const posts = doc.querySelectorAll('div.post-wrap[data-post-id]');
-      
-      if (posts.length === 0) {
-        console.warn(`❗️ На странице ${pageNum} не найдено постов. Возможно, структура страницы изменилась.`);
-      }
-
-      for (const post of posts) {
-        // ✅ ИЗМЕНЕНО: Селектор для автора
-        const author = post.querySelector('.author a')?.textContent.trim() || 'Гость';
-        const postLink = post.querySelector('a[title="Ссылка на это сообщение"]');
-        const postNumber = postLink ? postLink.textContent.trim() : '#?';
-        // ✅ ИЗМЕНЕНО: Селектор для даты
-        const dateString = post.querySelector('.post-date')?.textContent.trim() || '...';
-        
-        // ✅ ИЗМЕНЕНО: Селектор для тела поста
-        const postBody = post.querySelector('.post-body[itemprop="text"]');
-        if (!postBody) continue;
-        
-        const tempDiv = postBody.cloneNode(true);
-        
-        // Обработка цитат
-        tempDiv.querySelectorAll('.quote').forEach(quote => {
-          const authorQuote = quote.querySelector('.quote-author')?.textContent.trim().replace(/,.*$/, '') || 'Цитата';
-          const bodyQuote = quote.querySelector('.quote-body');
-          if(bodyQuote) quote.replaceWith(`\n>> [Цитата: ${authorQuote}]\n---\n${bodyQuote.innerText.trim()}\n---\n`);
-        });
-
-        // Раскрытие спойлеров
-        tempDiv.querySelectorAll('.spoil').forEach(spoil => {
-          const titleSpoil = spoil.querySelector('.spoil-title')?.textContent.trim() || 'Спойлер';
-          const bodySpoil = spoil.querySelector('.spoil-body');
-          if(bodySpoil) spoil.replaceWith(`\n>> [СПОЙЛЕР: ${titleSpoil}]\n---\n${bodySpoil.innerText.trim()}\n---\n`);
-        });
-        
-        const cleanText = tempDiv.innerText.trim();
-
-        allPostsText += `--- [ ${postNumber} | Автор: ${author} | ${dateString} ] ---\n\n`;
-        allPostsText += cleanText + "\n\n";
-        allPostsText += "================================================================\n\n";
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 350)); // Пауза
-    }
-
-    // --- Скачивание файла ---
-    console.log("✅✅✅ ГОТОВО! Все сообщения собраны. ✅✅✅");
-    progressText.innerHTML = '✅ Готово! Создаю файл для скачивания...';
-    
-    const filename = `${getFormattedDate()} - [4pda.to] - ${sanitizeFilename(title)}.txt`;
-    const blob = new Blob([allPostsText], { type: 'text/plain;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
-    console.log(`✅ Файл '${filename}' успешно создан и скачивание должно было начаться.`);
-
-    console.log("Ниже вы можете увидеть весь текст для ручного копирования:");
-    console.log(allPostsText);
-
-  } catch (error) {
-    console.error("❌ Произошла ошибка во время выполнения скрипта:", error);
-    progressText.innerHTML = `❌ Ошибка!<br>${error.message}<br>Подробности в консоли (F12).`;
-    progressText.style.color = '#ff8a8a';
-  } finally {
-    if(mainContent) mainContent.style.display = '';
-    setTimeout(() => {
-      if (document.getElementById('pda-scraper-overlay')) {
-        document.body.removeChild(overlay);
-      }
-    }, 5000);
+  // 1) ipb_pages_array[...] = ["<url>", PER_PAGE, LAST_START]
+  {
+    const html = document.documentElement.outerHTML;
+    const m = html.match(/ipb_pages_array\[\d+]\=\["[^"]+",\s*(\d+),\s*(\d+)\]/);
+    if (m) { perPage = parseInt(m[1],10)||20; lastStart = parseInt(m[2],10)||0; }
   }
 
+  // 2) ссылка "на последнюю"
+  const lastLink = document.querySelector('.pagelinklast a[href*="&st="], a[title*="последнюю"][href*="&st="], a[title*="На последнюю"][href*="&st="]');
+  if (lastLink) {
+    const st = parseInt((lastLink.href.match(/[?&]st=(\d+)/)||[])[1],10);
+    if (Number.isFinite(st)) lastStart = Math.max(lastStart, st);
+  }
+
+  // 3) fallback по "N страниц"
+  let totalPages = (lastStart>0 && perPage>0) ? Math.floor(lastStart/perPage)+1 : 1;
+  const domCount = (() => {
+    const t = (document.querySelector('.pagelink-menu, .pagination')?.textContent||'');
+    const m = t.match(/(\d+)\s*страниц/i); return m ? parseInt(m[1],10) : null;
+  })();
+  if (domCount) totalPages = domCount;
+
+  // 4) sanity + доп.пересчёт по видимым ссылкам, если что-то странное
+  if (!Number.isFinite(totalPages) || totalPages<1) totalPages=1;
+  if (totalPages>2000) {
+    const maxSt = [...document.querySelectorAll('a[href*="&st="]')]
+      .map(a=>parseInt((a.href.match(/[?&]st=(\d+)/)||[])[1],10))
+      .filter(Number.isFinite)
+      .reduce((mx,v)=>Math.max(mx,v),0);
+    if (maxSt && perPage) totalPages = Math.floor(maxSt/perPage)+1;
+    totalPages = Math.min(totalPages||1, 2000);
+  }
+
+  log(`Тема: ${topicTitle}`);
+  log(`Страниц: ${totalPages} (perPage=${perPage}, lastStart=${lastStart})`);
+
+  // ---- сборщик "сущности" поста с минимизацией символов ----
+  const extractCompactPosts = (doc) => {
+    const blocks = doc.querySelectorAll('table.ipbtable[data-post]');
+    const out = [];
+    blocks.forEach(tab => {
+      // номер
+      const num = tab.querySelector('a[title="Ссылка на это сообщение"]')?.textContent?.trim() || '#?';
+      // автор
+      const author = tab.querySelector('.normalname a')?.textContent?.trim() ||
+                     tab.querySelector('.normalname')?.textContent?.trim() || 'Гость';
+      // дата
+      const rawDateCell = tab.querySelector('td.row2[id^="ph-"][id$="-d2"]')?.textContent || '';
+      const date = rawDateCell.replace(/\s+Сообщение.*$/,'').replace(/\s+/g,' ').trim() || '';
+
+      // текст поста
+      const body = tab.querySelector('.postcolor');
+      if (!body) return;
+
+      const temp = body.cloneNode(true);
+
+      // выкинуть цитаты чтобы не дублировать чужой текст и экономить размер
+      temp.querySelectorAll('.post-block.quote, .quote').forEach(q => q.remove());
+      // из спойлеров оставить только текст
+      temp.querySelectorAll('.post-block.spoil .block-body, .spoil .block-body').forEach(b => {
+        b.replaceWith(b.innerText || b.textContent || '');
+      });
+      // убрать скрипты, код-блоки и мусор
+      temp.querySelectorAll('script, style, .post-block.code, .attach, .signature, .edit, .post-edit-reason').forEach(el => el.remove());
+      temp.querySelectorAll('img, video, iframe, br').forEach(el => { if (el.tagName==='BR') el.replaceWith('\n'); else el.remove(); });
+
+      // плоский текст + чистки
+      let text = (temp.innerText || temp.textContent || '').trim();
+
+      // компактирование: убрать лишние пробелы/переводы
+      text = text
+        .replace(/\r/g,'')
+        .replace(/\t+/g,' ')
+        .replace(/\u00A0/g,' ')
+        .replace(/[ ]{2,}/g,' ')
+        .replace(/\n{3,}/g,'\n\n')
+        .replace(/^\s+|\s+$/g,'')
+        .trim();
+
+      // если совсем пусто — пропускаем
+      if (!text) return;
+
+      // финальная строка: [# | автор | дата] текст
+      const line = `[${num} | ${author} | ${date}] ${text}`;
+      out.push(line);
+    });
+    return out;
+  };
+
+  // ---- сбор всех страниц ----
+  let all = [];
+  for (let i=0; i<totalPages; i++) {
+    const st = i*perPage;
+    const pageUrl = `${baseUrl}&st=${st}`;
+    log(`→ ${i+1}/${totalPages}: ${pageUrl}`);
+
+    try {
+      const res = await fetch(pageUrl, { credentials: 'include' });
+      if (!res.ok) { log(`! ${res.status} на ${pageUrl}`); continue; }
+      const html = await decode1251(res);
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const lines = extractCompactPosts(doc);
+      all.push(...lines);
+    } catch(e) {
+      log('err:', e?.message || e);
+    }
+    // небольшая пауза, чтобы не долбить сервер
+    await sleep(250);
+  }
+
+  if (all.length===0) { alert('Ничего не нашли. Возможно, залогинься на 4PDA'); return; }
+
+  // ---- сохранение ----
+  const header = `Источник: ${topicTitle}\nURL: ${baseUrl}\nСтраниц: ${totalPages}\n====================\n`;
+  const content = header + all.join('\n\n') + '\n';
+  const blob = new Blob([content], {type:'text/plain;charset=utf-8'});
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: `${nowYMD()} - [4pda.to] - ${sanitize(topicTitle)}.txt`
+  });
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+
+  log(`✔ Готово. Сообщений: ${all.length}`);
 })();
