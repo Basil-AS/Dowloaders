@@ -49,30 +49,39 @@
         console.log("Режим: Скачивание результатов поиска.");
         const query = urlParams.get('query');
         title = query ? `Результаты поиска по '${query}'` : 'Результаты поиска';
-        // Копируем все параметры текущего URL для сохранения контекста поиска
         baseUrl = window.location.href.split('&st=')[0];
     } else {
         throw new Error("Не удалось определить режим работы. Скрипт работает только на страницах тем ('showtopic=...') или результатов поиска ('act=search...').");
     }
 
-    const pageMenu = document.querySelector('.pagelink-menu');
-    if (pageMenu) {
-      const match = pageMenu.textContent.match(/(\d+)\s+страниц/);
-      if (match) totalPages = parseInt(match[1], 10);
+    // ИЗМЕНЕНО: Селектор для пагинации
+    const lastPageLink = document.querySelector('.page-nav > ul > li:last-child > a');
+    if (lastPageLink) {
+        const pagesMatch = lastPageLink.textContent.match(/(\d+)/);
+        if (pagesMatch) {
+            totalPages = parseInt(pagesMatch[1], 10);
+        } else {
+            // Если последняя кнопка не число, ищем по-другому
+            const pageMenu = document.querySelector('.pagelink-menu');
+            if (pageMenu) {
+                const match = pageMenu.textContent.match(/(\d+)\s+страниц/);
+                if (match) totalPages = parseInt(match[1], 10);
+            }
+        }
     }
     
     console.log(`Заголовок: '${title}'`);
     console.log(`Всего страниц для скачивания: ${totalPages}`);
     
     let allPostsText = `Источник: ${title}\n`;
-    allPostsText += `URL: ${window.location.href}\n`;
+    allPostsText += `URL: ${window.location.href.split('&st=')[0]}\n`;
     allPostsText += `Всего страниц: ${totalPages}\n`;
     allPostsText += "================================================================\n\n";
 
     // --- Проходим по всем страницам ---
     for (let i = 0; i < totalPages; i++) {
       const pageNum = i + 1;
-      const start = i * 20; // на 4pda 20 постов на странице
+      const start = i * 20; // на 4pda 20 постов на странице (стандарт)
       const pageUrl = `${baseUrl}&st=${start}`;
       
       progressText.innerHTML = `📥 Загружаю страницу ${pageNum} из ${totalPages}...`;
@@ -90,30 +99,38 @@
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
 
-      const posts = doc.querySelectorAll('div.borderwrap[data-post]');
+      // ✅ ИЗМЕНЕНО: Главный селектор для поиска постов
+      const posts = doc.querySelectorAll('div.post-wrap[data-post-id]');
       
+      if (posts.length === 0) {
+        console.warn(`❗️ На странице ${pageNum} не найдено постов. Возможно, структура страницы изменилась.`);
+      }
+
       for (const post of posts) {
-        const author = post.querySelector('.normalname a')?.textContent.trim() || 'Гость';
+        // ✅ ИЗМЕНЕНО: Селектор для автора
+        const author = post.querySelector('.author a')?.textContent.trim() || 'Гость';
         const postLink = post.querySelector('a[title="Ссылка на это сообщение"]');
         const postNumber = postLink ? postLink.textContent.trim() : '#?';
-        const dateString = post.querySelector('td.row2[width="99%"]')?.textContent.split('Сообщение')[0].trim() || '...';
+        // ✅ ИЗМЕНЕНО: Селектор для даты
+        const dateString = post.querySelector('.post-date')?.textContent.trim() || '...';
         
-        const postBody = post.querySelector('.postcolor');
+        // ✅ ИЗМЕНЕНО: Селектор для тела поста
+        const postBody = post.querySelector('.post-body[itemprop="text"]');
         if (!postBody) continue;
         
         const tempDiv = postBody.cloneNode(true);
         
         // Обработка цитат
         tempDiv.querySelectorAll('.quote').forEach(quote => {
-          const authorQuote = quote.querySelector('.block-title')?.textContent.trim() || 'Цитата';
-          const bodyQuote = quote.querySelector('.block-body');
+          const authorQuote = quote.querySelector('.quote-author')?.textContent.trim().replace(/,.*$/, '') || 'Цитата';
+          const bodyQuote = quote.querySelector('.quote-body');
           if(bodyQuote) quote.replaceWith(`\n>> [Цитата: ${authorQuote}]\n---\n${bodyQuote.innerText.trim()}\n---\n`);
         });
 
         // Раскрытие спойлеров
         tempDiv.querySelectorAll('.spoil').forEach(spoil => {
-          const titleSpoil = spoil.querySelector('.block-title')?.textContent.trim() || 'Спойлер';
-          const bodySpoil = spoil.querySelector('.block-body');
+          const titleSpoil = spoil.querySelector('.spoil-title')?.textContent.trim() || 'Спойлер';
+          const bodySpoil = spoil.querySelector('.spoil-body');
           if(bodySpoil) spoil.replaceWith(`\n>> [СПОЙЛЕР: ${titleSpoil}]\n---\n${bodySpoil.innerText.trim()}\n---\n`);
         });
         
