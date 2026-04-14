@@ -21,36 +21,28 @@
   const baseUrl = 'https://4pda.to/forum/index.php?showtopic=' + topicId;
   const topicTitle = (document.querySelector('h1[itemprop="name"]')?.textContent || document.title || '').trim();
 
-  // ── пагинация (ПОЛНОСТЬЮ ПЕРЕПИСАНО) ──
+  // ── пагинация ──
   const detectPagination = () => {
     let perPage = 20;
     let totalPages = 1;
 
-    // 1. Ищем системную переменную 4PDA (извлекаем perPage)
     try {
       const html = document.body.innerHTML;
       const m = html.match(/ipb_pages_array\[.*?\]\s*=\s*\[.*?,(\d+),(\d+)\]/);
       if (m) {
         perPage = parseInt(m[1], 10) || 20;
         const maxSt = parseInt(m[2], 10) || 0;
-        if (maxSt > 0) {
-            totalPages = Math.floor(maxSt / perPage) + 1;
-        }
+        if (maxSt > 0) totalPages = Math.floor(maxSt / perPage) + 1;
       }
     } catch (e) {}
 
-    // 2. Читаем точный текст "XXXX страниц" в UI (самый надежный метод)
     const pageSpans = document.querySelectorAll('.pagelink-menu');
     for (const span of pageSpans) {
       const text = span.textContent.trim();
       const m = text.match(/^(\d+)\s*страниц/i);
-      if (m) {
-        totalPages = parseInt(m[1], 10);
-        break;
-      }
+      if (m) { totalPages = parseInt(m[1], 10); break; }
     }
 
-    // 3. Защита от дурака: если вдруг ломается UI, ищем кнопку "В конец" (строго в блоке пагинации!)
     if (totalPages <= 1) {
        const lastLink = document.querySelector('.pagelinklast a[href*="&st="]');
        if (lastLink) {
@@ -92,26 +84,23 @@
     const escTitle = topicTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     dialog.innerHTML = [
-      '<div style="margin:0 0 6px;font-size:18px;font-weight:700;color:#f5c2e7">\u{1F4E5} 4PDA Scraper</div>',
+      '<div style="margin:0 0 6px;font-size:18px;font-weight:700;color:#f5c2e7">\u{1F4E5} 4PDA Scraper (Fast)</div>',
       '<div style="font-size:13px;color:#a6adc8;margin-bottom:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + escTitle + '">' + escTitle + '</div>',
       '<div style="display:flex;gap:16px;margin-bottom:18px;font-size:13px;color:#bac2de">',
         '<span style="background:#313244;padding:4px 10px;border-radius:6px">\u{1F4C4} Страниц: <b style="color:#a6e3a1">' + totalPages + '</b></span>',
         '<span style="background:#313244;padding:4px 10px;border-radius:6px">\u{1F4AC} ~' + (totalPages * perPage) + ' сообщ.</span>',
       '</div>',
-
       '<label style="display:block;margin-bottom:8px;font-size:14px;cursor:pointer">',
         '<input type="radio" name="scr-mode" value="all" checked style="margin-right:8px;accent-color:#cba6f7"> Скачать всё',
       '</label>',
       '<label style="display:block;margin-bottom:8px;font-size:14px;cursor:pointer">',
         '<input type="radio" name="scr-mode" value="percent" style="margin-right:8px;accent-color:#cba6f7"> Часть (% от новых)',
       '</label>',
-
       '<div class="scr-range-row" style="display:flex;align-items:center;gap:12px;margin:12px 0 4px 26px;opacity:0.4">',
         '<input type="range" class="scr-pct" min="1" max="100" value="25" step="1" disabled style="flex:1;accent-color:#cba6f7">',
         '<span class="scr-pct-val" style="min-width:60px;text-align:right;font-size:14px;font-weight:600;color:#cba6f7">25%</span>',
       '</div>',
       '<div class="scr-hint" style="font-size:12px;color:#7f849c;margin:2px 0 16px 26px;opacity:0.3">\u2248 ' + Math.max(1, Math.ceil(totalPages * 0.25)) + ' стр. с конца</div>',
-
       '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:22px">',
         '<button class="scr-cancel" style="padding:9px 22px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;background:#45475a;color:#cdd6f4">Отмена</button>',
         '<button class="scr-go" style="padding:9px 22px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;background:#cba6f7;color:#1e1e2e">Скачать</button>',
@@ -137,15 +126,10 @@
       hint.textContent = '\u2248 ' + pages + ' стр. с конца (' + (pages * perPage) + ' сообщ.)';
     };
 
-    dialog.querySelectorAll('input[name="scr-mode"]').forEach(r => {
-      r.addEventListener('change', updateUI);
-    });
+    dialog.querySelectorAll('input[name="scr-mode"]').forEach(r => r.addEventListener('change', updateUI));
     slider.addEventListener('input', updateUI);
 
-    dialog.querySelector('.scr-cancel').addEventListener('click', () => {
-      overlay.remove();
-      resolve(null);
-    });
+    dialog.querySelector('.scr-cancel').addEventListener('click', () => { overlay.remove(); resolve(null); });
     dialog.querySelector('.scr-go').addEventListener('click', () => {
       const mode = dialog.querySelector('input[name="scr-mode"]:checked').value;
       const pct = parseInt(slider.value, 10);
@@ -156,7 +140,6 @@
 
   if (!userChoice) { log('Отменено'); return; }
 
-  // ── диапазон страниц ──
   let startPage, endPage;
   if (userChoice.mode === 'all') {
     startPage = 0;
@@ -171,7 +154,6 @@
 
   // ── прогресс-бар ──
   document.querySelector('.scraper-progress')?.remove();
-
   const progEl = document.createElement('div');
   progEl.className = 'scraper-progress';
   Object.assign(progEl.style, {
@@ -191,16 +173,16 @@
   document.body.appendChild(progEl);
 
   const progress = {
-    update(cur, total, posts) {
-      const pct = Math.round(cur / total * 100);
+    update(completed, total, postsCount) {
+      const pct = Math.round((completed / total) * 100);
       progEl.querySelector('.scr-p-fill').style.width = pct + '%';
-      progEl.querySelector('.scr-p-title').textContent = '\u{1F4E5} Страница ' + cur + ' / ' + total;
-      progEl.querySelector('.scr-p-stats').textContent = pct + '% \u00B7 собрано ' + posts + ' сообщений';
+      progEl.querySelector('.scr-p-title').textContent = '\u{1F4E5} Скачано страниц: ' + completed + ' / ' + total;
+      progEl.querySelector('.scr-p-stats').textContent = pct + '% \u00B7 собрано ' + postsCount + ' сообщений';
     },
-    done(posts) {
+    done(postsCount) {
       progEl.querySelector('.scr-p-fill').style.width = '100%';
       progEl.querySelector('.scr-p-title').textContent = '\u2705 Готово!';
-      progEl.querySelector('.scr-p-stats').textContent = 'Сохранено ' + posts + ' сообщений';
+      progEl.querySelector('.scr-p-stats').textContent = 'Сохранено ' + postsCount + ' сообщений';
       setTimeout(() => progEl.remove(), 4000);
     },
     error(msg) {
@@ -215,8 +197,7 @@
     const out = [];
     blocks.forEach(tab => {
       const num = tab.querySelector('a[title="\u0421\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u044D\u0442\u043E \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435"]')?.textContent?.trim() || '#?';
-      const author = tab.querySelector('.normalname a')?.textContent?.trim()
-        || tab.querySelector('.normalname')?.textContent?.trim() || '\u0413\u043E\u0441\u0442\u044C';
+      const author = tab.querySelector('.normalname a')?.textContent?.trim() || tab.querySelector('.normalname')?.textContent?.trim() || '\u0413\u043E\u0441\u0442\u044C';
       const rawDate = tab.querySelector('td.row2[id^="ph-"][id$="-d2"]')?.textContent || '';
       const date = rawDate.replace(/\s+\u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435.*$/, '').replace(/\s+/g, ' ').trim();
 
@@ -225,55 +206,81 @@
 
       const temp = body.cloneNode(true);
       temp.querySelectorAll('.post-block.quote, .quote').forEach(q => q.remove());
-      temp.querySelectorAll('.post-block.spoil .block-body, .spoil .block-body')
-        .forEach(b => b.replaceWith(b.innerText || b.textContent || ''));
-      temp.querySelectorAll(
-        'script, style, .post-block.code, .attach, .signature, .edit, .post-edit-reason'
-      ).forEach(el => el.remove());
-      temp.querySelectorAll('img, video, iframe, br').forEach(el => {
-        el.tagName === 'BR' ? el.replaceWith('\n') : el.remove();
-      });
+      temp.querySelectorAll('.post-block.spoil .block-body, .spoil .block-body').forEach(b => b.replaceWith(b.innerText || b.textContent || ''));
+      temp.querySelectorAll('script, style, .post-block.code, .attach, .signature, .edit, .post-edit-reason').forEach(el => el.remove());
+      temp.querySelectorAll('img, video, iframe, br').forEach(el => el.tagName === 'BR' ? el.replaceWith('\n') : el.remove());
 
-      let text = (temp.innerText || temp.textContent || '')
-        .replace(/\r/g, '')
-        .replace(/\t+/g, ' ')
-        .replace(/\u00A0/g, ' ')
-        .replace(/ {2,}/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-
+      let text = (temp.innerText || temp.textContent || '').replace(/\r/g, '').replace(/\t+/g, ' ').replace(/\u00A0/g, ' ').replace(/ {2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
       if (!text) return;
       out.push('[' + num + ' | ' + author + ' | ' + date + '] ' + text);
     });
     return out;
   };
 
-  // ── основной цикл ──
-  const all = [];
+  // ── МНОГОПОТОЧНАЯ ЗАГРУЗКА ──
+  const MAX_CONCURRENT = 5; // 5 потоков (безопасный максимум для 4PDA)
+  const results = new Array(pagesToFetch);
+  let currentIndex = startPage;
+  let completedPages = 0;
+  let totalPostsFetched = 0;
   let errors = 0;
 
-  for (let i = startPage; i <= endPage; i++) {
-    const st = i * perPage;
-    const pageUrl = baseUrl + '&st=' + st;
-    const idx = i - startPage + 1;
+  const worker = async () => {
+    while (currentIndex <= endPage) {
+      const pageToFetch = currentIndex++;
+      const relativeIdx = pageToFetch - startPage;
+      const st = pageToFetch * perPage;
+      const pageUrl = baseUrl + '&st=' + st;
+      
+      let success = false;
+      let retries = 2; // Авто-повтор при ошибке 503
 
-    progress.update(idx, pagesToFetch, all.length);
+      while (retries > 0 && !success) {
+        try {
+          const res = await fetch(pageUrl, { credentials: 'include' });
+          if (res.status === 503) {
+            log('Anti-DDoS 503 на странице ' + pageToFetch + ', ждем...');
+            await sleep(2500); // Ждем 2.5 сек и пробуем снова
+            retries--;
+            continue;
+          }
+          if (!res.ok) throw new Error('Status ' + res.status);
+          
+          const html = await decode1251(res);
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const posts = extractPosts(doc);
+          
+          results[relativeIdx] = posts;
+          totalPostsFetched += posts.length;
+          success = true;
+        } catch (e) {
+          log('Ошибка стр ' + pageToFetch + ':', e);
+          await sleep(1500);
+          retries--;
+        }
+      }
 
-    try {
-      const res = await fetch(pageUrl, { credentials: 'include' });
-      if (!res.ok) { log('\u26A0 ' + res.status + ' \u2014 ' + pageUrl); errors++; continue; }
-      const html = await decode1251(res);
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      all.push(...extractPosts(doc));
-    } catch (e) {
-      log('err:', e?.message || e);
-      errors++;
+      if (!success) {
+        errors++;
+        results[relativeIdx] = [];
+      }
+
+      completedPages++;
+      progress.update(completedPages, pagesToFetch, totalPostsFetched);
+      await sleep(100 + Math.random() * 200); // Небольшая пауза между запросами в одном потоке
     }
-    await sleep(300 + Math.random() * 300);
-  }
+  };
+
+  // Запускаем потоки
+  const workers = [];
+  for (let i = 0; i < MAX_CONCURRENT; i++) workers.push(worker());
+  await Promise.all(workers);
+
+  // Склеиваем результаты (сохраняя хронологический порядок страниц!)
+  const all = results.flat();
 
   if (all.length === 0) {
-    progress.error('\u041D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E. \u0417\u0430\u043B\u043E\u0433\u0438\u043D\u044C\u0441\u044F \u043D\u0430 4PDA.');
+    progress.error('\u041D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E.');
     return;
   }
 
