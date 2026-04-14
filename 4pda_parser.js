@@ -21,45 +21,48 @@
   const baseUrl = 'https://4pda.to/forum/index.php?showtopic=' + topicId;
   const topicTitle = (document.querySelector('h1[itemprop="name"]')?.textContent || document.title || '').trim();
 
-  // ── пагинация (ИСПРАВЛЕНО) ──
+  // ── пагинация (ПОЛНОСТЬЮ ПЕРЕПИСАНО) ──
   const detectPagination = () => {
-    let perPage = 20; // по умолчанию на 4pda
+    let perPage = 20;
     let totalPages = 1;
 
-    // 1. Попытка достать системные переменные форума (исправлена регулярка под [ipb_pages_shown])
+    // 1. Ищем системную переменную 4PDA (извлекаем perPage)
     try {
-      const html = document.documentElement.outerHTML;
-      const m = html.match(/ipb_pages_array\[.*?\]\s*=\s*\[\s*["'][^"']+["']\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/);
+      const html = document.body.innerHTML;
+      const m = html.match(/ipb_pages_array\[.*?\]\s*=\s*\[.*?,(\d+),(\d+)\]/);
       if (m) {
         perPage = parseInt(m[1], 10) || 20;
+        const maxSt = parseInt(m[2], 10) || 0;
+        if (maxSt > 0) {
+            totalPages = Math.floor(maxSt / perPage) + 1;
+        }
       }
-    } catch (e) { log('ipb_pages_array parse error', e); }
+    } catch (e) {}
 
-    // 2. Надежный поиск по тексту вида "3059 страниц" в кнопке меню
-    const pageJumpSpan = document.querySelector('span[id^="page-jump"]');
-    if (pageJumpSpan) {
-      const m = pageJumpSpan.textContent.match(/(\d+)\s*страниц/i);
+    // 2. Читаем точный текст "XXXX страниц" в UI (самый надежный метод)
+    const pageSpans = document.querySelectorAll('.pagelink-menu');
+    for (const span of pageSpans) {
+      const text = span.textContent.trim();
+      const m = text.match(/^(\d+)\s*страниц/i);
       if (m) {
-        totalPages = Math.max(totalPages, parseInt(m[1], 10));
+        totalPages = parseInt(m[1], 10);
+        break;
       }
     }
 
-    // 3. Запасной вариант (Fallback) - анализ ссылок пагинации по параметру &st=
-    const allSt = [];
-    document.querySelectorAll('a[href*="&st="], a[href*="?st="]').forEach(a => {
-      const m = a.href.match(/[?&]st=(\d+)/);
-      if (m) allSt.push(parseInt(m[1], 10));
-    });
-    
-    const validSt = allSt.filter(Number.isFinite);
-    if (validSt.length) {
-      const maxSt = Math.max(...validSt);
-      totalPages = Math.max(totalPages, Math.floor(maxSt / perPage) + 1);
+    // 3. Защита от дурака: если вдруг ломается UI, ищем кнопку "В конец" (строго в блоке пагинации!)
+    if (totalPages <= 1) {
+       const lastLink = document.querySelector('.pagelinklast a[href*="&st="]');
+       if (lastLink) {
+           const m = lastLink.href.match(/&st=(\d+)/);
+           if (m) {
+               const st = parseInt(m[1], 10);
+               totalPages = Math.floor(st / perPage) + 1;
+           }
+       }
     }
 
-    if (!Number.isFinite(totalPages) || totalPages < 1) totalPages = 1;
-    totalPages = Math.min(totalPages, 50000); // Увеличен лимит для гигантских тем на 4PDA
-    return { perPage, totalPages };
+    return { perPage, totalPages: Math.max(1, totalPages) };
   };
 
   const { perPage, totalPages } = detectPagination();
@@ -92,7 +95,7 @@
       '<div style="margin:0 0 6px;font-size:18px;font-weight:700;color:#f5c2e7">\u{1F4E5} 4PDA Scraper</div>',
       '<div style="font-size:13px;color:#a6adc8;margin-bottom:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + escTitle + '">' + escTitle + '</div>',
       '<div style="display:flex;gap:16px;margin-bottom:18px;font-size:13px;color:#bac2de">',
-        '<span style="background:#313244;padding:4px 10px;border-radius:6px">\u{1F4C4} Страниц: <b>' + totalPages + '</b></span>',
+        '<span style="background:#313244;padding:4px 10px;border-radius:6px">\u{1F4C4} Страниц: <b style="color:#a6e3a1">' + totalPages + '</b></span>',
         '<span style="background:#313244;padding:4px 10px;border-radius:6px">\u{1F4AC} ~' + (totalPages * perPage) + ' сообщ.</span>',
       '</div>',
 
@@ -266,7 +269,6 @@
       log('err:', e?.message || e);
       errors++;
     }
-    // Немного увеличил таймаут загрузки, чтобы защита от ддоса 4PDA не резала запросы
     await sleep(300 + Math.random() * 300);
   }
 
