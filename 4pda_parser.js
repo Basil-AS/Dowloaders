@@ -21,49 +21,44 @@
   const baseUrl = 'https://4pda.to/forum/index.php?showtopic=' + topicId;
   const topicTitle = (document.querySelector('h1[itemprop="name"]')?.textContent || document.title || '').trim();
 
-  // ── пагинация ──
+  // ── пагинация (ИСПРАВЛЕНО) ──
   const detectPagination = () => {
-    let perPage = 20;
+    let perPage = 20; // по умолчанию на 4pda
     let totalPages = 1;
 
+    // 1. Попытка достать системные переменные форума (исправлена регулярка под [ipb_pages_shown])
     try {
       const html = document.documentElement.outerHTML;
-      const m = html.match(/ipb_pages_array\[\d+\]\s*=\s*\["[^"]+",\s*(\d+),\s*(\d+)\]/);
+      const m = html.match(/ipb_pages_array\[.*?\]\s*=\s*\[\s*["'][^"']+["']\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/);
       if (m) {
         perPage = parseInt(m[1], 10) || 20;
-        const lastStart = parseInt(m[2], 10) || 0;
-        if (lastStart > 0 && perPage > 0) {
-          totalPages = Math.floor(lastStart / perPage) + 1;
-        }
       }
     } catch (e) { log('ipb_pages_array parse error', e); }
 
+    // 2. Надежный поиск по тексту вида "3059 страниц" в кнопке меню
+    const pageJumpSpan = document.querySelector('span[id^="page-jump"]');
+    if (pageJumpSpan) {
+      const m = pageJumpSpan.textContent.match(/(\d+)\s*страниц/i);
+      if (m) {
+        totalPages = Math.max(totalPages, parseInt(m[1], 10));
+      }
+    }
+
+    // 3. Запасной вариант (Fallback) - анализ ссылок пагинации по параметру &st=
     const allSt = [];
-    document.querySelectorAll('a[href*="&st="]').forEach(a => {
+    document.querySelectorAll('a[href*="&st="], a[href*="?st="]').forEach(a => {
       const m = a.href.match(/[?&]st=(\d+)/);
       if (m) allSt.push(parseInt(m[1], 10));
     });
+    
     const validSt = allSt.filter(Number.isFinite);
     if (validSt.length) {
       const maxSt = Math.max(...validSt);
       totalPages = Math.max(totalPages, Math.floor(maxSt / perPage) + 1);
     }
 
-    document.querySelectorAll('.pagination, .pagelinks, .pagelink-menu, .topic-pagination').forEach(el => {
-      const t = el.textContent || '';
-      let pm = t.match(/(\d+)\s*страниц/i);
-      if (pm) { totalPages = Math.max(totalPages, parseInt(pm[1], 10)); return; }
-      pm = t.match(/из\s+(\d+)/i);
-      if (pm) { totalPages = Math.max(totalPages, parseInt(pm[1], 10)); }
-    });
-
-    document.querySelectorAll('.pagination a, .pagelinks a').forEach(a => {
-      const n = parseInt(a.textContent.trim(), 10);
-      if (Number.isFinite(n) && n > 0) totalPages = Math.max(totalPages, n);
-    });
-
     if (!Number.isFinite(totalPages) || totalPages < 1) totalPages = 1;
-    totalPages = Math.min(totalPages, 5000);
+    totalPages = Math.min(totalPages, 50000); // Увеличен лимит для гигантских тем на 4PDA
     return { perPage, totalPages };
   };
 
@@ -271,7 +266,8 @@
       log('err:', e?.message || e);
       errors++;
     }
-    await sleep(200 + Math.random() * 150);
+    // Немного увеличил таймаут загрузки, чтобы защита от ддоса 4PDA не резала запросы
+    await sleep(300 + Math.random() * 300);
   }
 
   if (all.length === 0) {
