@@ -48,12 +48,12 @@
   const getJSON = async (url, tries = 3) => {
     for (let i = 1; i <= tries; i++) {
       try {
-        const res = await fetch(url, { credentials: 'omit', headers: { Accept: 'application/json' } });
+        const res = await fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } });
         if (res.status === 429 && i < tries) { await sleep(2000 * i); continue; }
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; throw err; }
         return await res.json();
       } catch (e) {
-        if (i === tries) throw e;
+        if (i === tries || (e.status >= 400 && e.status < 500 && e.status !== 429)) throw e;
         await sleep(500 * i);
       }
     }
@@ -124,7 +124,7 @@
   };
 
   // ── REDDIT ──
-  const parseReddit = async () => {
+  const parseRedditJSON = async () => {
     const m = location.pathname.match(/\/comments\/([a-z0-9]+)/i);
     if (!m) throw new Error('Не удалось определить ID поста Reddit');
     const id = m[1];
@@ -132,7 +132,8 @@
     const origin = location.origin;
 
     log('📥 Загружаю пост', id);
-    const data = await getJSON(`${origin}/comments/${id}.json?limit=500&depth=100&raw_json=1&sort=top`);
+    const data = await getJSON(`${origin}/comments/${id}.json?limit=500&depth=100&raw_json=1&sort=top`)
+      .catch(() => getJSON(`${origin}${location.pathname.replace(/\/$/, '')}.json?limit=500&raw_json=1`));
     const post = data[0].data.children[0].data;
     const title = post.title;
 
@@ -204,6 +205,55 @@
     out += `(собрано комментариев: ${n} из ${post.num_comments})\n`;
     log(`✅ Reddit: комментариев ${n} из ${post.num_comments}`);
     return { title, text: out, site: location.hostname.replace(/^(www|old|new)\./, '') };
+  };
+
+
+  // Запасной вариант: Reddit режет .json (403) — разбираем уже отрисованную страницу (shreddit).
+  const parseRedditDOM = async () => {
+    const postEl = document.querySelector('shreddit-post');
+    if (!postEl) throw new Error('На странице нет поста (shreddit-post). Открой пост целиком и повтори.');
+    const attr = (el, n) => el.getAttribute(n) || '';
+
+    // раскрываем «ещё комментарии / ответы»
+    const MORE = /more repl|more comment|view more|ещ[её] \d*\s*(ответ|коммент)|больше (коммент|ответ)|посмотреть (ещ|больш)|показать ещ/i;
+    for (let round = 0; round < 40; round++) {
+      const btns = Array.from(document.querySelectorAll('shreddit-comment-tree button, shreddit-comment button, faceplate-partial button'))
+        .filter(b => MORE.test(b.textContent || '') && !b.dataset.__clicked);
+      if (!btns.length) break;
+      log(`📥 Раскрываю ещё ветки: ${btns.length}`);
+      btns.forEach(b => { b.dataset.__clicked = '1'; b.click(); });
+      await sleep(1500);
+    }
+
+    const title = attr(postEl, 'post-title') || document.title;
+    const body = postEl.querySelector('[slot="text-body"]');
+    let out = `Пост: ${title}\nURL: ${location.href}\n`;
+    out += `Сабреддит: ${attr(postEl, 'subreddit-prefixed-name')} | Автор: u/${attr(postEl, 'author')}\n`;
+    out += `Дата: ${fmtDate(attr(postEl, 'created-timestamp'))} | Рейтинг: ${attr(postEl, 'score')} | Комментариев: ${attr(postEl, 'comment-count')}\n`;
+    out += `${SEP}\n\n${body ? htmlToText(body.innerHTML) : '(без текста)'}\n\n${SEP}\n\nКОММЕНТАРИИ\n${SEP}\n\n`;
+
+    let n = 0;
+    document.querySelectorAll('shreddit-comment').forEach(c => {
+      const txt = c.querySelector(':scope > [slot="comment"]');
+      if (!txt) return;
+      n++;
+      const level = parseInt(attr(c, 'depth'), 10) || 0;
+      const date = c.querySelector(':scope > [slot="commentMeta"] time, time')?.getAttribute('datetime') || attr(c, 'created');
+      const head = `--- [ u/${attr(c, 'author') || 'удалён'} | ${fmtDate(date)} | ${attr(c, 'score')} ] ---`;
+      out += indent(`${head}\n${htmlToText(txt.innerHTML)}`, level) + '\n\n';
+    });
+    out += `(собрано комментариев: ${n} из ${attr(postEl, 'comment-count')})\n`;
+    log(`✅ Reddit (DOM): комментариев ${n}`);
+    return { title, text: out, site: location.hostname.replace(/^(www|old|new)\./, '') };
+  };
+
+  const parseReddit = async () => {
+    try {
+      return await parseRedditJSON();
+    } catch (e) {
+      log(`⚠️ JSON недоступен (${e.message}), разбираю страницу напрямую...`);
+      return await parseRedditDOM();
+    }
   };
 
   // ── запуск ──
