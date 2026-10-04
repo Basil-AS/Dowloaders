@@ -81,7 +81,7 @@
       boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
     });
 
-    const escTitle = topicTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escTitle = topicTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
     dialog.innerHTML = [
       '<div style="margin:0 0 6px;font-size:18px;font-weight:700;color:#f5c2e7">\u{1F4E5} 4PDA Scraper (Fast)</div>',
@@ -192,10 +192,24 @@
   };
 
   // ── извлечение постов ──
+  // innerText в документе от DOMParser не знает про вёрстку и склеивает блоки без переносов,
+  // поэтому обходим DOM сами.
+  const BLOCK = new Set(['DIV', 'P', 'UL', 'OL', 'LI', 'TABLE', 'TR', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+  const nodeText = n => {
+    if (n.nodeType === 3) return n.nodeValue;
+    if (n.nodeType !== 1) return '';
+    if (n.tagName === 'BR') return '\n';
+    const inner = Array.from(n.childNodes).map(nodeText).join('');
+    if (n.tagName === 'LI') return '\n\u2022 ' + inner.trim();
+    if (n.tagName === 'TD' || n.tagName === 'TH') return inner + ' ';
+    return BLOCK.has(n.tagName) ? '\n' + inner + '\n' : inner;
+  };
+
   const extractPosts = doc => {
-    const blocks = doc.querySelectorAll('table.ipbtable[data-post]');
     const out = [];
-    blocks.forEach(tab => {
+    doc.querySelectorAll('table.ipbtable[data-post]').forEach(tab => {
+      const id = tab.getAttribute('data-post');
+      if (id && seenPosts.has(id)) return; // страницы «съезжают», если в теме появились новые сообщения
       const num = tab.querySelector('a[title="\u0421\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u044D\u0442\u043E \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435"]')?.textContent?.trim() || '#?';
       const author = tab.querySelector('.normalname a')?.textContent?.trim() || tab.querySelector('.normalname')?.textContent?.trim() || '\u0413\u043E\u0441\u0442\u044C';
       const rawDate = tab.querySelector('td.row2[id^="ph-"][id$="-d2"]')?.textContent || '';
@@ -205,13 +219,11 @@
       if (!body) return;
 
       const temp = body.cloneNode(true);
-      temp.querySelectorAll('.post-block.quote, .quote').forEach(q => q.remove());
-      temp.querySelectorAll('.post-block.spoil .block-body, .spoil .block-body').forEach(b => b.replaceWith(b.innerText || b.textContent || ''));
-      temp.querySelectorAll('script, style, .post-block.code, .attach, .signature, .edit, .post-edit-reason').forEach(el => el.remove());
-      temp.querySelectorAll('img, video, iframe, br').forEach(el => el.tagName === 'BR' ? el.replaceWith('\n') : el.remove());
+      temp.querySelectorAll('script, style, .quote, .post-block.code, .attach, .signature, .edit, .post-edit-reason, img, video, iframe').forEach(el => el.remove());
 
-      let text = (temp.innerText || temp.textContent || '').replace(/\r/g, '').replace(/\t+/g, ' ').replace(/\u00A0/g, ' ').replace(/ {2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+      const text = nodeText(temp).replace(/\r/g, '').replace(/[\t\u00A0]+/g, ' ').replace(/ {2,}/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
       if (!text) return;
+      if (id) seenPosts.add(id);
       out.push('[' + num + ' | ' + author + ' | ' + date + '] ' + text);
     });
     return out;
@@ -224,6 +236,7 @@
   let completedPages = 0;
   let totalPostsFetched = 0;
   let errors = 0;
+  const seenPosts = new Set();
 
   const worker = async () => {
     while (currentIndex <= endPage) {
@@ -232,31 +245,26 @@
       const st = pageToFetch * perPage;
       const pageUrl = baseUrl + '&st=' + st;
       
+      const MAX_TRIES = 4;
       let success = false;
-      let retries = 2; // Авто-повтор при ошибке 503
 
-      while (retries > 0 && !success) {
+      for (let attempt = 1; attempt <= MAX_TRIES && !success; attempt++) {
         try {
           const res = await fetch(pageUrl, { credentials: 'include' });
-          if (res.status === 503) {
-            log('Anti-DDoS 503 на странице ' + pageToFetch + ', ждем...');
-            await sleep(2500); // Ждем 2.5 сек и пробуем снова
-            retries--;
-            continue;
+          if (res.status === 429 || res.status >= 500) {
+            throw new Error('Status ' + res.status); // Anti-DDoS / перегрузка — повторим с паузой
           }
           if (!res.ok) throw new Error('Status ' + res.status);
-          
-          const html = await decode1251(res);
-          const doc = new DOMParser().parseFromString(html, 'text/html');
+
+          const doc = new DOMParser().parseFromString(await decode1251(res), 'text/html');
           const posts = extractPosts(doc);
-          
+
           results[relativeIdx] = posts;
           totalPostsFetched += posts.length;
           success = true;
         } catch (e) {
-          log('Ошибка стр ' + pageToFetch + ':', e);
-          await sleep(1500);
-          retries--;
+          log('Ошибка стр ' + (pageToFetch + 1) + ' (попытка ' + attempt + '/' + MAX_TRIES + '):', e.message || e);
+          if (attempt < MAX_TRIES) await sleep(1500 * attempt);
         }
       }
 
