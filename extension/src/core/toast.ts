@@ -1,56 +1,67 @@
-/** Небольшая плашка прогресса на странице (Shadow DOM — стили сайта не влияют). */
+import type { Lang, Theme } from './types';
+import { t } from './i18n';
+
+/** Плашка прогресса на странице. Shadow DOM: стили сайта на неё не влияют, её стили — на сайт. */
 export interface Toast {
   update(done: number, total: number, text?: string): void;
-  done(text: string): void;
-  fail(text: string): void;
+  done(name: string): void;
+  fail(message: string): void;
   close(): void;
 }
 
 const CSS = `
 :host{all:initial}
-.box{position:fixed;right:20px;bottom:20px;z-index:2147483647;min-width:260px;max-width:360px;padding:14px 18px;border-radius:12px;
- background:#1e1e2e;color:#cdd6f4;font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.4)}
-.t{margin-bottom:8px;font-weight:600}.bar{height:6px;background:#313244;border-radius:3px;overflow:hidden}
-.f{height:100%;width:0;background:linear-gradient(90deg,#cba6f7,#f5c2e7);transition:width .25s}
-.s{margin-top:6px;font-size:12px;color:#a6adc8;word-break:break-word}.err .t{color:#f38ba8}
+.box{--bg:#ffffff;--fg:#182022;--mute:#5d6b6e;--line:#d5dddf;--accent:#0b7a6f;--track:#e4eaeb;--bad:#b3261e;
+ position:fixed;right:16px;bottom:16px;z-index:2147483647;width:300px;padding:12px 14px;border-radius:6px;
+ background:var(--bg);color:var(--fg);border:1px solid var(--line);box-shadow:0 2px 12px rgba(0,0,0,.14);
+ font:13px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+:host([data-theme="dark"]) .box{--bg:#1b2123;--fg:#e4eaeb;--mute:#97a6a9;--line:#323c3f;--accent:#4cc2b3;--track:#2a3335;--bad:#f2a49e}
+@media (prefers-color-scheme:dark){:host(:not([data-theme="light"])) .box{--bg:#1b2123;--fg:#e4eaeb;--mute:#97a6a9;--line:#323c3f;--accent:#4cc2b3;--track:#2a3335;--bad:#f2a49e}}
+.t{font-weight:600}.s{margin-top:2px;color:var(--mute);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.bar{margin-top:10px;height:3px;border-radius:2px;background:var(--track);overflow:hidden}
+.f{height:100%;width:0;background:var(--accent);transition:width .2s}
+.err .t{color:var(--bad)}.err .bar{display:none}
+@media (prefers-reduced-motion:reduce){.f{transition:none}}
 `;
 
-export function createToast(title: string, doc: Document = document): Toast {
+export function createToast(opts: { site: string; lang: Lang; theme: Theme }, doc: Document = document): Toast {
   doc.getElementById('fas-toast')?.remove();
   const host = doc.createElement('div');
   host.id = 'fas-toast';
+  if (opts.theme !== 'system') host.setAttribute('data-theme', opts.theme);
   const root = host.attachShadow({ mode: 'open' });
   const style = doc.createElement('style');
   style.textContent = CSS;
-  const mk = (cls: string, parent: Element) => {
-    const e = doc.createElement('div');
+  const mk = (cls: string, parent: Node, tag = 'div') => {
+    const e = doc.createElement(tag);
     e.className = cls;
     parent.appendChild(e);
     return e;
   };
-  const box = mk('box', root as unknown as Element);
-  root.insertBefore(style, box);
-  mk('t', box);
-  mk('f', mk('bar', box));
-  mk('s', box);
+  root.appendChild(style);
+  const box = mk('box', root);
+  box.setAttribute('role', 'status');
+  const title = mk('t', box);
+  const sub = mk('s', box);
+  const fill = mk('f', mk('bar', box));
   (doc.body ?? doc.documentElement).appendChild(host);
-  const $ = (s: string) => root.querySelector(s) as HTMLElement;
-  const set = (t?: string, pct?: number, s?: string) => {
-    if (t != null) $('.t').textContent = t;
-    if (pct != null) $('.f').style.width = pct + '%';
-    if (s != null) $('.s').textContent = s;
+
+  const set = (ti: string, su: string, pct?: number) => {
+    title.textContent = ti;
+    sub.textContent = su;
+    if (pct != null) fill.style.width = `${pct}%`;
   };
-  set('📥 ' + title, 0, '…');
+  set(`${opts.site}: ${t(opts.lang, 'p_saving').toLowerCase()}`, '');
   const close = () => host.remove();
   return {
-    update: (done, total, text) => set(undefined, total ? Math.round((done / total) * 100) : 0, text ?? `${done} / ${total}`),
-    done: text => {
-      set('✅', 100, text);
-      setTimeout(close, 5000);
+    update: (done, total, text) => set(`${opts.site}: ${t(opts.lang, 'p_saving').toLowerCase()}`, text ?? t(opts.lang, 'p_progress', { done, total }), total ? Math.round((done / total) * 100) : 0),
+    done: name => {
+      set(t(opts.lang, 'p_saved'), name, 100);
+      setTimeout(close, 4500);
     },
-    fail: text => {
-      $('.box').classList.add('err');
-      set('❌', undefined, text);
+    fail: message => {
+      box.classList.add('err');
+      set(t(opts.lang, 'p_failed', { msg: '' }).replace(/:\s*$/, ''), message);
       setTimeout(close, 8000);
     },
     close,

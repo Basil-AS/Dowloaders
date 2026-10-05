@@ -1,15 +1,19 @@
-import type { ExtractOptions, Format, Progress } from './types';
+import type { DocKind, ExtractOptions, Format, Progress } from './types';
 
 export type Action = 'download' | 'copy';
 
 export type Msg =
-  | { type: 'fas/detect' }
-  | { type: 'fas/run'; action: Action; opts: ExtractOptions; template: string; metaHeader: boolean }
+  | { type: 'fas/detect'; generic: boolean }
+  | { type: 'fas/run'; action: Action; opts: ExtractOptions; template: string; metaHeader: boolean; generic: boolean; theme: 'light' | 'dark' | 'system' }
   | { type: 'fas/progress'; progress: Progress };
 
 export interface DetectResult {
   id: string;
   name: string;
+  kind: DocKind;
+  /** Заголовок страницы и хост — для шапки popup. */
+  title: string;
+  host: string;
   paged: boolean;
   hasComments: boolean;
 }

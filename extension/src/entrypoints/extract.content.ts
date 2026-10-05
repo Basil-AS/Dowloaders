@@ -3,14 +3,12 @@ import { ADAPTERS } from '../sites';
 import { pickAdapter, runAdapter, saveBlob } from '../core/run';
 import { createToast } from '../core/toast';
 import { t } from '../core/i18n';
-import type { Msg, DetectResult, RunResult } from '../core/messages';
+import type { DetectResult, Msg, RunResult } from '../core/messages';
 import type { Ctx } from '../core/types';
 
 const GUARD = '__fasInstalled';
 
-/**
- * Runtime-скрипт: внедряется по требованию (activeTab), поэтому расширению не нужен доступ ко всем сайтам.
- */
+/** Runtime-скрипт: внедряется по требованию (activeTab), поэтому расширению не нужен доступ ко всем сайтам. */
 export default defineContentScript({
   matches: ['<all_urls>'],
   registration: 'runtime',
@@ -23,18 +21,24 @@ export default defineContentScript({
 
     browser.runtime.onMessage.addListener((raw: unknown, _sender, sendResponse) => {
       const msg = raw as Msg;
+
       if (msg.type === 'fas/detect') {
-        const a = pickAdapter(ADAPTERS, ctx());
-        sendResponse((a ? { id: a.id, name: a.name, paged: a.paged, hasComments: a.hasComments } : null) satisfies DetectResult | null);
+        const c = ctx();
+        const a = pickAdapter(ADAPTERS, c, { generic: msg.generic });
+        sendResponse(
+          a
+            ? ({ id: a.id, name: a.name, kind: a.kind, title: document.title.trim(), host: location.hostname.replace(/^www\./, ''), paged: a.paged, hasComments: a.hasComments } satisfies DetectResult)
+            : null,
+        );
         return;
       }
       if (msg.type !== 'fas/run') return;
 
       (async (): Promise<RunResult> => {
         const c = ctx();
-        const adapter = pickAdapter(ADAPTERS, c);
-        if (!adapter) return { ok: false, error: t(msg.opts.lang, 'unsupported') };
-        const toast = createToast(adapter.name);
+        const adapter = pickAdapter(ADAPTERS, c, { generic: msg.generic });
+        if (!adapter) return { ok: false, error: t(msg.opts.lang, 'e_unsupported') };
+        const toast = createToast({ site: adapter.id === 'generic' ? c.url.hostname.replace(/^www\./, '') : adapter.name, lang: msg.opts.lang, theme: msg.theme });
         let last = 0;
         try {
           const out = await runAdapter(
@@ -42,9 +46,9 @@ export default defineContentScript({
             c,
             msg.opts,
             p => {
-              toast.update(p.done, p.total, p.text);
+              toast.update(p.done, p.total);
               const now = Date.now();
-              if (now - last > 250) {
+              if (now - last > 200) {
                 last = now;
                 browser.runtime.sendMessage({ type: 'fas/progress', progress: p } satisfies Msg).catch(() => {});
               }
@@ -53,7 +57,7 @@ export default defineContentScript({
             msg.metaHeader,
           );
           if (msg.action === 'download') saveBlob(out.text, out.filename, msg.opts.format);
-          toast.done(`${out.doc.items.length || 1} → ${out.filename}`);
+          toast.done(out.filename);
           return {
             ok: true,
             site: out.doc.site,

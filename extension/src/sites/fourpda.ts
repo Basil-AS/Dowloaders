@@ -1,6 +1,7 @@
 import type { Item, ParsedDoc, SiteAdapter } from '../core/types';
 import { getText, runPool } from '../core/http';
 import { domToText } from '../core/html';
+import { t } from '../core/i18n';
 
 const LINK_TITLE = 'Ссылка на это сообщение';
 
@@ -76,6 +77,7 @@ export function parsePosts(doc: Document, o: { quotes: boolean; code: boolean; l
 export const fourpda: SiteAdapter = {
   id: '4pda',
   name: '4PDA',
+  kind: 'topic',
   paged: true,
   hasComments: false,
   detect: ({ url }) => /(^|\.)4pda\.(to|ru)$/.test(url.hostname) && url.searchParams.has('showtopic'),
@@ -114,21 +116,21 @@ export const fourpda: SiteAdapter = {
     );
 
     const items = results.flat();
-    if (!items.length) throw new Error('Ничего не найдено (нужна авторизация или сработала защита)');
+    if (!items.length) throw new Error(t(o.lang, 'e_nothing'));
     return {
+      id: topicId,
       site: '4pda.to',
       kind: 'topic',
       title,
       url: base,
       meta: [
-        ['ID', topicId],
-        ['Страниц всего', String(totalPages)],
-        ['Скачано', o.percent >= 100 ? 'все страницы' : `последние ${o.percent}% (стр. ${start + 1}–${totalPages})`],
+        [t(o.lang, 'm_pages'), String(totalPages)],
+        [t(o.lang, 'm_range'), o.percent >= 100 ? t(o.lang, 'range_all') : t(o.lang, 'range_pages', { n: o.percent, from: start + 1, to: totalPages })],
       ],
       body: '',
       items,
       totalItems: null,
-      warnings: errors.length ? [`Не загружено страниц: ${errors.length} (${errors.slice(0, 5).join('; ')})`] : [],
+      warnings: errors.length ? [`${t(o.lang, 'w_pages_failed', { n: errors.length })} (${errors.slice(0, 5).join('; ')})`] : [],
     };
   },
 };

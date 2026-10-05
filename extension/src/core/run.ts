@@ -8,8 +8,10 @@ export interface RunOutput {
   filename: string;
 }
 
-export function pickAdapter(adapters: SiteAdapter[], ctx: Ctx): SiteAdapter | undefined {
+export function pickAdapter(adapters: SiteAdapter[], ctx: Ctx, opts: { generic?: boolean } = {}): SiteAdapter | undefined {
+  const allowGeneric = opts.generic ?? true;
   return adapters.find(a => {
+    if (a.id === 'generic' && !allowGeneric) return false;
     try {
       return a.detect(ctx);
     } catch {
@@ -31,7 +33,7 @@ export async function runAdapter(
   const raw = await adapter.extract(ctx, o, progress);
   const doc = applyFilters(raw, o);
   const text = formatDoc(doc, o, { meta: metaHeader, now });
-  const filename = buildFilename(template, { title: doc.title, site: doc.site, count: doc.items.length, id: doc.meta.find(([k]) => k === 'ID')?.[1], now }, EXT[o.format]);
+  const filename = buildFilename(template, { title: doc.title, site: doc.site, count: doc.items.length, id: doc.id, now }, EXT[o.format]);
   return { doc, text, filename };
 }
 

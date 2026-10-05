@@ -1,6 +1,7 @@
 import type { Item, ParsedDoc, SiteAdapter } from '../core/types';
 import { getJSON } from '../core/http';
 import { htmlToText } from '../core/html';
+import { t } from '../core/i18n';
 
 interface HabrComment {
   id: number | string;
@@ -17,13 +18,15 @@ const ID_RE = /\/(?:articles|news|post|blog|companies\/[^/]+\/articles)\/(\d+)/;
 export const habr: SiteAdapter = {
   id: 'habr',
   name: 'Хабр',
+  kind: 'article',
   paged: false,
   hasComments: true,
   detect: ({ url }) => /(^|\.)habr\.com$/.test(url.hostname) && (ID_RE.test(url.pathname) || /\/\d+\/?$/.test(url.pathname)),
 
   async extract({ url, fetch: f }, o, progress): Promise<ParsedDoc> {
     const id = (url.pathname.match(ID_RE) ?? url.pathname.match(/\/(\d+)\/?$/))?.[1];
-    if (!id) throw new Error('Не удалось определить ID статьи');
+    if (!id) throw new Error(t(o.lang, 'e_no_id'));
+    const L = (k: Parameters<typeof t>[1]) => t(o.lang, k);
     const lang = url.pathname.split('/')[1] === 'en' ? 'en' : 'ru';
     const base = `${url.origin}/kek/v2/articles/${id}/`;
     const q = `?fl=${lang}&hl=${lang}`;
@@ -35,15 +38,16 @@ export const habr: SiteAdapter = {
     const title = text(art.titleHtml ?? art.title ?? '');
     const s = art.statistics ?? {};
     const meta: [string, string][] = [
-      ['ID', id],
-      ['Автор', art.author?.alias ?? art.author?.login ?? '—'],
-      ['Дата', art.timePublished ?? ''],
+      [L('m_author'), art.author?.alias ?? art.author?.login ?? '—'],
+      [L('m_date'), art.timePublished ?? ''],
     ];
     if (art.statistics) {
-      meta.push(['Рейтинг', String(s.score ?? '—')], ['Просмотры', String(s.readingCount ?? '—')], ['В закладках', String(s.favoritesCount ?? '—')]);
+      meta.push([L('m_score'), String(s.score ?? '—')], [L('m_views'), String(s.readingCount ?? '—')], [L('m_bookmarks'), String(s.favoritesCount ?? '—')]);
     }
-    const tags = [...(art.hubs ?? []).map((h: any) => `хаб:${h.title}`), ...(art.tags ?? []).map((t: any) => t.titleHtml ?? t.title)];
-    if (tags.length) meta.push(['Теги/хабы', tags.join(', ')]);
+    const hubs = (art.hubs ?? []).map((h: any) => h.title);
+    const tags = (art.tags ?? []).map((x: any) => x.titleHtml ?? x.title);
+    if (hubs.length) meta.push([L('m_hubs'), hubs.join(', ')]);
+    if (tags.length) meta.push([L('m_tags'), tags.join(', ')]);
 
     const items: Item[] = [];
     const warnings: string[] = [];
@@ -70,22 +74,22 @@ export const habr: SiteAdapter = {
           seen.add(String(x.id));
           items.push({
             id: String(x.id),
-            author: x.author?.alias ?? 'удалён',
+            author: x.author?.alias ?? L('w_deleted'),
             date: x.timePublished ?? '',
             score: x.score ?? null,
             level,
             replyTo: x.parentId ? String(x.parentId) : null,
-            text: x.isSuspended ? '[комментарий скрыт]' : text(x.message ?? ''),
+            text: x.isSuspended ? L('w_hidden_comment') : text(x.message ?? ''),
           });
           for (const ch of kids.get(String(x.id)) ?? []) emit(ch, level + 1);
         };
         roots.forEach(r => emit(r, 0));
         list.filter(x => x.parentId && !map[String(x.parentId)]).forEach(x => emit(x, 1)); // «осиротевшие»
       } catch (e) {
-        warnings.push(`Комментарии не загружены: ${(e as Error).message}`);
+        warnings.push(t(o.lang, 'w_comments_failed', { msg: (e as Error).message }));
       }
     }
     progress({ done: 2, total: 2 });
-    return { site: 'habr.com', kind: 'article', title, url: url.href, meta, body: text(art.textHtml ?? ''), items, totalItems: total, warnings };
+    return { id, site: 'habr.com', kind: 'article', title, url: url.href, meta, body: text(art.textHtml ?? ''), items, totalItems: total, warnings };
   },
 };

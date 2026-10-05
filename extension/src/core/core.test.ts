@@ -4,12 +4,12 @@ import { applyFilters, formatDoc } from './format';
 import { buildFilename, sanitize } from './filename';
 import { DEFAULT_SETTINGS, sanitizeSettings, toExtractOptions } from './settings-model';
 import { fetchRetry, runPool } from './http';
-import { resolveLang, t } from './i18n';
+import { count, plural, resolveLang, t } from './i18n';
 import type { ParsedDoc } from './types';
 
 const opts = toExtractOptions(DEFAULT_SETTINGS, { lang: 'ru' });
 const doc: ParsedDoc = {
-  site: 'x.test', kind: 'article', title: 'Заголовок', url: 'https://x.test/1', meta: [['Автор', 'vasya']], body: 'Тело',
+  id: '1', site: 'x.test', kind: 'article', title: 'Заголовок', url: 'https://x.test/1', meta: [['Автор', 'vasya']], body: 'Тело',
   items: [
     { id: '1', author: 'a', date: '2024-01-01T00:00:00Z', score: 5, level: 0, replyTo: null, text: 'корень' },
     { id: '2', author: 'b', date: '', score: -3, level: 1, replyTo: '1', text: 'плохой' },
@@ -42,10 +42,10 @@ describe('format', () => {
   it('txt: шапка, комментарии с отступом', () => {
     const out = formatDoc(doc, opts, { now: new Date('2024-02-02T10:00:00Z') });
     expect(out).toContain('Заголовок');
-    expect(out).toContain('URL: https://x.test/1');
+    expect(out).toContain('Адрес: https://x.test/1');
     expect(out).toContain('КОММЕНТАРИИ (4)');
     expect(out).toContain('--- [ #1 | a |');
-    expect(out).toContain('    --- [ #2 | b | -3 | ответ на #1 ] ---\n    плохой');
+    expect(out).toContain('    --- [ #2 | b | -3 | в ответ на #1 ] ---\n    плохой');
   });
   it('md: заголовки и вложенные цитаты', () => {
     const out = formatDoc(doc, { ...opts, format: 'md' });
@@ -103,6 +103,19 @@ describe('settings', () => {
     expect(resolveLang('auto', 'ru-RU')).toBe('ru');
     expect(resolveLang('auto', 'de')).toBe('en');
     expect(t('ru', 'h_collected', { n: 1, m: 2 })).toBe('собрано 1 из 2');
+  });
+  it('склонения', () => {
+    expect([1, 2, 5, 11, 12, 21, 22, 25, 111].map(n => count('ru', n, 'comments'))).toEqual([
+      '1 комментарий', '2 комментария', '5 комментариев', '11 комментариев', '12 комментариев', '21 комментарий', '22 комментария', '25 комментариев', '111 комментариев',
+    ]);
+    expect(count('en', 1, 'posts')).toBe('1 post');
+    expect(plural('en', 0, ['a', 'b'])).toBe('b');
+  });
+  it('тема и generic: допустимые значения', () => {
+    expect(sanitizeSettings({ theme: 'neon' as never }).theme).toBe('system');
+    expect(sanitizeSettings({ theme: 'dark' }).theme).toBe('dark');
+    expect(sanitizeSettings({}).generic).toBe(true);
+    expect(sanitizeSettings({ generic: false }).generic).toBe(false);
   });
 });
 

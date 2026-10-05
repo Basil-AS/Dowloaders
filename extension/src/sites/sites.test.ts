@@ -3,6 +3,7 @@ import { habr } from './habr';
 import { reddit } from './reddit';
 import { fourpda, parsePosts } from './fourpda';
 import { discourse, cookedToText } from './discourse';
+import { generic } from './generic';
 import { ADAPTERS } from './index';
 import { pickAdapter } from '../core/run';
 import { toExtractOptions, DEFAULT_SETTINGS } from '../core/settings-model';
@@ -41,7 +42,7 @@ describe('habr', () => {
     expect(d.body).toBe('текст');
     expect(d.items.map(i => [i.id, i.level])).toEqual([['1', 0], ['2', 1], ['9', 1]]);
     expect(d.items[1]).toMatchObject({ author: 'b', score: -1, replyTo: '1', text: 'ответ\n2' });
-    expect(d.meta.find(([k]) => k === 'Теги/хабы')?.[1]).toContain('Python');
+    expect(d.meta.find(([k]) => k === 'Хабы')?.[1]).toContain('Python');
   });
   it('comments=false не запрашивает комментарии', async () => {
     let hit = false;
@@ -53,7 +54,7 @@ describe('habr', () => {
   it('ошибка комментариев → предупреждение, статья остаётся', async () => {
     const g = (async (u: string) => (u.includes('/comments/') ? new Response('', { status: 404 }) : json({ titleHtml: 'T', textHtml: 'b' }))) as never;
     const d = await habr.extract(mkCtx('https://habr.com/ru/articles/5/', undefined, g), o, noop);
-    expect(d.warnings[0]).toContain('Комментарии не загружены');
+    expect(d.warnings[0]).toContain('Комментарии не загрузились');
     expect(d.body).toBe('b');
   });
 });
@@ -117,7 +118,7 @@ describe('4pda', () => {
     expect(all.items.map(i => i.id)).toEqual(['1', '2', '3']);
     const part = await fourpda.extract(mkCtx('https://4pda.to/forum/index.php?showtopic=1', html, f), { ...o, delayMs: 0, concurrency: 1, percent: 34 }, noop);
     expect(part.items.map(i => i.id)).toEqual(['2', '3']);
-    expect(part.meta.find(([k]) => k === 'Скачано')?.[1]).toContain('последние 34%');
+    expect(part.meta.find(([k]) => k === 'Загружено')?.[1]).toContain('последние 34%');
   });
 });
 
@@ -151,5 +152,41 @@ describe('discourse', () => {
     const cooked = '<aside class="quote"><div class="title">user1:</div><blockquote><p>цит</p></blockquote></aside><p>да <img class="emoji" alt=":smile:"> <a class="lightbox" href="https://f/1.png"><img src="https://f/1_t.png"></a></p>';
     expect(cookedToText(cooked, o)).toBe('> user1:\n> цит\n\nда :smile: [img: https://f/1.png]');
     expect(cookedToText(cooked, { ...o, quotes: false, images: false })).toBe('да :smile:');
+  });
+});
+
+describe('en: метки документа локализуются', () => {
+  it('habr с lang=en', async () => {
+    const f = (async () => json({ titleHtml: 'T', author: { alias: 'v' }, statistics: { score: 3 }, textHtml: '' })) as never;
+    const d = await habr.extract(mkCtx('https://habr.com/ru/articles/5/', undefined, f), { ...o, lang: 'en', comments: false }, noop);
+    expect(d.meta.map(([k]) => k)).toEqual(['Author', 'Date', 'Score', 'Views', 'Bookmarks']);
+    expect(d.id).toBe('5');
+  });
+});
+
+describe('generic (статьи на любых сайтах)', () => {
+  const para = 'Это длинный абзац обычного текста статьи, в котором достаточно слов, запятых, и смысла для того, чтобы алгоритм выделения основного содержимого признал его частью материала. ';
+  const html = `<html><head><title>Моя статья | Блог</title></head><body><nav><a href="/">Главная</a><a href="/about">О нас</a></nav>
+    <article><h1>Моя статья</h1><p class="byline">Иван Петров</p>${`<p>${para}<a href="https://example.org/x">источник</a></p>`.repeat(8)}</article>
+    <footer>Подвал сайта</footer></body></html>`;
+  it('определяет читаемую страницу и достаёт основной текст', async () => {
+    const ctx = mkCtx('https://blog.example.com/posts/my-article', html);
+    expect(generic.detect(ctx)).toBe(true);
+    const d = await generic.extract(ctx, o, noop);
+    expect(d.title).toContain('Моя статья');
+    expect(d.id).toBe('my-article');
+    expect(d.site).toBe('blog.example.com');
+    expect(d.body).toContain('Это длинный абзац');
+    expect(d.body).toContain('источник (https://example.org/x)');
+    expect(d.body).not.toContain('Подвал сайта');
+    expect(d.items).toHaveLength(0);
+  });
+  it('пустая страница не считается статьёй', () => {
+    expect(generic.detect(mkCtx('https://example.com/'))).toBe(false);
+  });
+  it('переключатель generic отключает адаптер', () => {
+    const ctx = mkCtx('https://blog.example.com/posts/x', html);
+    expect(pickAdapter(ADAPTERS, ctx)?.id).toBe('generic');
+    expect(pickAdapter(ADAPTERS, ctx, { generic: false })).toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
 import type { Ctx, Item, ParsedDoc, SiteAdapter } from '../core/types';
 import { getJSON, runPool } from '../core/http';
 import { domToText } from '../core/html';
+import { t } from '../core/i18n';
 
 const topicId = (path: string) => (path.match(/\/t\/(?:[^/]+\/)?(\d+)(?:\/\d+)?\/?$/) ?? path.match(/\/t\/[^/]+\/(\d+)/))?.[1] ?? null;
 
@@ -31,6 +32,7 @@ export function cookedToText(html: string, o: { quotes: boolean; links: boolean;
 export const discourse: SiteAdapter = {
   id: 'discourse',
   name: 'Discourse',
+  kind: 'topic',
   paged: true,
   hasComments: false,
   detect: ({ url, doc }: Ctx) => isDiscourse(doc) && !!topicId(url.pathname),
@@ -60,7 +62,7 @@ export const discourse: SiteAdapter = {
           const j = await getJSON(f, `${base}/posts.json?${ch.map(i => `post_ids[]=${i}`).join('&')}&include_suggested=false`);
           for (const p of j.post_stream?.posts ?? []) byId.set(p.id, p);
         } catch (e) {
-          warnings.push(`блок постов не загружен: ${(e as Error).message}`);
+          warnings.push((e as Error).message);
         }
         progress({ done: ++done, total: chunks.length, text: `${done}/${chunks.length}` });
       },
@@ -79,22 +81,24 @@ export const discourse: SiteAdapter = {
         score: likes || null,
         level: 0,
         replyTo: p.reply_to_post_number ? String(p.reply_to_post_number) : null,
-        text: p.hidden ? '[пост скрыт]' : cookedToText(p.cooked, o, doc),
+        text: p.hidden ? t(o.lang, 'w_hidden_post') : cookedToText(p.cooked, o, doc),
       });
     }
-    if (items.length < wanted.length) warnings.push(`Не удалось загрузить постов: ${wanted.length - items.length}`);
+    warnings.length = 0;
+    if (items.length < wanted.length) warnings.push(t(o.lang, 'w_posts_failed', { n: wanted.length - items.length }));
 
     const tags = (topic.tags ?? []).map((t: any) => (typeof t === 'string' ? t : t.name)).join(', ');
+    const L = (k: Parameters<typeof t>[1]) => t(o.lang, k);
     const meta: [string, string][] = [
-      ['ID', id],
-      ['Создана', topic.created_at ?? ''],
-      ['Просмотров', String(topic.views ?? '—')],
-      ['Лайков', String(topic.like_count ?? '—')],
-      ['Всего постов', String(stream.length)],
+      [L('m_created'), topic.created_at ?? ''],
+      [L('m_views'), String(topic.views ?? '—')],
+      [L('m_likes'), String(topic.like_count ?? '—')],
+      [L('m_posts'), String(stream.length)],
     ];
-    if (o.percent < 100) meta.push(['Скачано', `последние ${o.percent}% (${items.length})`]);
-    if (tags) meta.push(['Теги', tags]);
+    if (o.percent < 100) meta.push([L('m_range'), t(o.lang, 'range_last', { n: o.percent })]);
+    if (tags) meta.push([L('m_tags'), tags]);
     return {
+      id,
       site: url.hostname,
       kind: 'topic',
       title: topic.title ?? topic.fancy_title ?? doc.title,

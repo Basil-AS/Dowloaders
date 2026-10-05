@@ -4,9 +4,9 @@ import { history, loadSettings, toExtractOptions } from './settings';
 import type { ExtractOptions, Settings } from './types';
 
 /** Внедряет content-скрипт (activeTab / host-права) и возвращает результат определения площадки. */
-export async function detect(tabId: number): Promise<DetectResult | null> {
+export async function detect(tabId: number, generic = true): Promise<DetectResult | null> {
   await browser.scripting.executeScript({ target: { tabId }, files: [CONTENT_FILE] });
-  return (await browser.tabs.sendMessage(tabId, { type: 'fas/detect' } satisfies Msg)) as DetectResult | null;
+  return (await browser.tabs.sendMessage(tabId, { type: 'fas/detect', generic } satisfies Msg)) as DetectResult | null;
 }
 
 export async function runOnTab(
@@ -24,6 +24,8 @@ export async function runOnTab(
       opts: toExtractOptions(s, over),
       template: s.filenameTemplate,
       metaHeader: s.metaHeader,
+      generic: s.generic,
+      theme: s.theme,
     } satisfies Msg)) as RunResult;
     if (res.ok && s.history && res.filename) {
       await history.add({
