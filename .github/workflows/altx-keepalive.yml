@@ -1,0 +1,19 @@
+name: altx-keepalive
+on:
+  push:
+    paths: ['altx-keepalive/**', '.github/workflows/altx-keepalive.yml']
+  pull_request:
+    paths: ['altx-keepalive/**']
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: altx-keepalive } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: altx-keepalive/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build && npm run build:firefox
+      - run: npx playwright-core install chromium && CHROMIUM=$(node -e "console.log(require('playwright-core').chromium.executablePath())") npm run e2e
