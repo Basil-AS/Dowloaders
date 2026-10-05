@@ -8,8 +8,13 @@ export interface RunOutput {
   filename: string;
 }
 
-export function pickAdapter(adapters: SiteAdapter[], ctx: Ctx): SiteAdapter | undefined {
+/** Хост без www/old/new — как сайт показывается в интерфейсе и в имени файла. */
+export const hostLabel = (u: URL | Location) => u.hostname.replace(/^(www|old|new)\./, '');
+
+export function pickAdapter(adapters: SiteAdapter[], ctx: Ctx, opts: { fallback?: boolean } = {}): SiteAdapter | undefined {
+  const allowFallback = opts.fallback ?? true;
   return adapters.find(a => {
+    if (a.fallback && !allowFallback) return false;
     try {
       return a.detect(ctx);
     } catch {
@@ -31,7 +36,7 @@ export async function runAdapter(
   const raw = await adapter.extract(ctx, o, progress);
   const doc = applyFilters(raw, o);
   const text = formatDoc(doc, o, { meta: metaHeader, now });
-  const filename = buildFilename(template, { title: doc.title, site: doc.site, count: doc.items.length, id: doc.meta.find(([k]) => k === 'ID')?.[1], now }, EXT[o.format]);
+  const filename = buildFilename(template, { title: doc.title, site: doc.site, count: doc.items.length, id: doc.id, now }, EXT[o.format]);
   return { doc, text, filename };
 }
 

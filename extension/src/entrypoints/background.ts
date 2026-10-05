@@ -18,9 +18,9 @@ async function setBadge(tabId: number, text: string, color: string, clearAfter =
 
 async function saveTab(tabId: number | undefined) {
   if (tabId == null) return;
-  await setBadge(tabId, '…', '#cba6f7');
+  await setBadge(tabId, '…', '#0b7a6f');
   const res = await runOnTab(tabId, 'download');
-  await setBadge(tabId, res.ok ? '✓' : '!', res.ok ? '#a6e3a1' : '#f38ba8', 4000);
+  await setBadge(tabId, res.ok ? '✓' : '!', res.ok ? '#2f7d32' : '#b3261e', 4000);
 }
 
 export default defineBackground(() => {
@@ -46,7 +46,7 @@ export default defineBackground(() => {
   browser.runtime.onMessage.addListener((raw: unknown, sender) => {
     const msg = raw as Msg;
     if (msg.type === 'fas/progress' && sender.tab?.id != null && msg.progress.total) {
-      void setBadge(sender.tab.id, `${Math.round((msg.progress.done / msg.progress.total) * 100)}%`, '#cba6f7');
+      void setBadge(sender.tab.id, `${Math.round((msg.progress.done / msg.progress.total) * 100)}%`, '#0b7a6f');
     }
   });
 });

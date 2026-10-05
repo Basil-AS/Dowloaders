@@ -4,6 +4,8 @@ import { resolveLang } from './i18n';
 export const DEFAULT_SETTINGS: Settings = {
   format: 'txt',
   lang: 'auto',
+  theme: 'system',
+  generic: true,
   comments: true,
   maxDepth: 0,
   minScore: null,
@@ -33,6 +35,8 @@ export function sanitizeSettings(s: Partial<Settings>): Settings {
     ...s,
     format: (['txt', 'md', 'json'] as const).includes(s.format as never) ? (s.format as Settings['format']) : d.format,
     lang: (['auto', 'ru', 'en'] as const).includes(s.lang as never) ? (s.lang as Settings['lang']) : d.lang,
+    theme: (['system', 'light', 'dark'] as const).includes(s.theme as never) ? (s.theme as Settings['theme']) : d.theme,
+    generic: s.generic ?? d.generic,
     maxDepth: num(s.maxDepth, d.maxDepth, 0, 50),
     minScore: s.minScore == null || (s.minScore as unknown) === '' ? null : num(s.minScore, 0, -100000, 100000),
     percent: num(s.percent, d.percent, 1, 100),

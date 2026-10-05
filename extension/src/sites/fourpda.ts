@@ -1,6 +1,7 @@
 import type { Item, ParsedDoc, SiteAdapter } from '../core/types';
 import { getText, runPool } from '../core/http';
 import { domToText } from '../core/html';
+import { t, tFor } from '../core/i18n';
 
 const LINK_TITLE = 'Ссылка на это сообщение';
 
@@ -76,11 +77,13 @@ export function parsePosts(doc: Document, o: { quotes: boolean; code: boolean; l
 export const fourpda: SiteAdapter = {
   id: '4pda',
   name: '4PDA',
+  kind: 'topic',
   paged: true,
   hasComments: false,
   detect: ({ url }) => /(^|\.)4pda\.(to|ru)$/.test(url.hostname) && url.searchParams.has('showtopic'),
 
   async extract({ url, doc, fetch: f }, o, progress): Promise<ParsedDoc> {
+    const L = tFor(o.lang);
     const topicId = url.searchParams.get('showtopic')!;
     const base = `${url.origin}/forum/index.php?showtopic=${topicId}`;
     const title = (doc.querySelector('h1[itemprop="name"]')?.textContent || doc.title || '').trim();
@@ -107,28 +110,28 @@ export const fourpda: SiteAdapter = {
         } catch (e) {
           errors.push(`стр. ${page + 1}: ${(e as Error).message}`);
         }
-        progress({ done: ++completed, total: count, text: `${completed}/${count} · ${fetched}` });
+        progress({ done: ++completed, total: count });
         return posts;
       },
       o.delayMs,
     );
 
     const items = results.flat();
-    if (!items.length) throw new Error('Ничего не найдено (нужна авторизация или сработала защита)');
+    if (!items.length) throw new Error(L('e_nothing'));
     return {
+      id: topicId,
       site: '4pda.to',
       kind: 'topic',
       title,
       url: base,
       meta: [
-        ['ID', topicId],
-        ['Страниц всего', String(totalPages)],
-        ['Скачано', o.percent >= 100 ? 'все страницы' : `последние ${o.percent}% (стр. ${start + 1}–${totalPages})`],
+        [L('m_pages'), String(totalPages)],
+        [L('m_range'), o.percent >= 100 ? L('range_all') : L('range_pages', { n: o.percent, from: start + 1, to: totalPages })],
       ],
       body: '',
       items,
       totalItems: null,
-      warnings: errors.length ? [`Не загружено страниц: ${errors.length} (${errors.slice(0, 5).join('; ')})`] : [],
+      warnings: errors.length ? [`${L('w_pages_failed', { n: errors.length })} (${errors.slice(0, 5).join('; ')})`] : [],
     };
   },
 };

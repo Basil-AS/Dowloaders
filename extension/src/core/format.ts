@@ -1,6 +1,14 @@
 import type { ExtractOptions, Format, Item, Lang, ParsedDoc } from './types';
 import { t } from './i18n';
 
+/** Форматы в порядке показа в интерфейсе. */
+export const FORMATS: [Format, string][] = [
+  ['txt', 'TXT'],
+  ['md', 'Markdown'],
+  ['json', 'JSON'],
+];
+export const FORMAT_LABEL = Object.fromEntries(FORMATS) as Record<Format, string>;
+
 export const EXT: Record<Format, string> = { txt: 'txt', md: 'md', json: 'json' };
 export const MIME: Record<Format, string> = {
   txt: 'text/plain;charset=utf-8',

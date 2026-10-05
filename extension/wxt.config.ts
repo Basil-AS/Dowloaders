@@ -14,7 +14,7 @@ export default defineConfig({
   manifest: {
     name: 'Forum & Article Saver',
     description: 'Сохраняет статьи, темы и комментарии (Хабр, Reddit, 4PDA, Discourse) в TXT / Markdown / JSON.',
-    version: '2.0.0',
+    version: '3.0.0',
     // Только activeTab: расширение трогает страницу лишь по клику / хоткею / из меню.
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus'],
     // Нужно только для режима «все вкладки» (запрашивается по кнопке).

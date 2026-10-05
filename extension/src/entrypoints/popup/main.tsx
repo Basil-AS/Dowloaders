@@ -1,4 +1,4 @@
-import '../../assets/style.css';
+import '../../ui/ui.css';
 import { render } from 'preact';
 import { App } from './App';
 

@@ -1,5 +1,6 @@
 export type Format = 'txt' | 'md' | 'json';
 export type Lang = 'ru' | 'en';
+export type Theme = 'system' | 'light' | 'dark';
 
 /** Один комментарий / пост форума. level — глубина вложенности (0 = корень). */
 export interface Item {
@@ -17,6 +18,8 @@ export type DocKind = 'article' | 'post' | 'topic';
 
 /** Единая модель результата для всех площадок. */
 export interface ParsedDoc {
+  /** ID материала на площадке (для шаблона имени файла). */
+  id: string;
   site: string;
   kind: DocKind;
   title: string;
@@ -52,7 +55,6 @@ export interface ExtractOptions {
 export interface Progress {
   done: number;
   total: number;
-  text?: string;
 }
 export type ProgressFn = (p: Progress) => void;
 
@@ -66,9 +68,12 @@ export interface Ctx {
 export interface SiteAdapter {
   id: string;
   name: string;
+  kind: DocKind;
   /** Поддерживает «последние N %». */
   paged: boolean;
   hasComments: boolean;
+  /** Запасной адаптер: используется, только если ни один конкретный не подошёл и это разрешено настройками. */
+  fallback?: boolean;
   detect(ctx: Ctx): boolean;
   extract(ctx: Ctx, o: ExtractOptions, progress: ProgressFn): Promise<ParsedDoc>;
 }
@@ -76,6 +81,9 @@ export interface SiteAdapter {
 export interface Settings {
   format: Format;
   lang: Lang | 'auto';
+  theme: Theme;
+  /** На незнакомых сайтах выделять основной текст статьи. */
+  generic: boolean;
   comments: boolean;
   maxDepth: number;
   minScore: number | null;
