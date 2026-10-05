@@ -9,7 +9,7 @@ https://gitingest.com/
 https://ntc.party/t/%D0%B5%D1%81%D0%BB%D0%B8-%D0%BE%D0%BF%D1%8F%D1%82%D1%8C-%D0%BF%D0%B5%D1%80%D0%B5%D1%81%D1%82%D0%B0%D0%BB-%D0%B3%D1%80%D1%83%D0%B7%D0%B8%D1%82%D1%8C%D1%81%D1%8F-youtube-%D0%B8%D0%BB%D0%B8-%D0%B5%D0%B3%D0%BE-%D0%B2%D0%B8%D0%B4%D0%B5%D0%BE/10529
 https://www.bettercap.org/project/introduction/
 
-## Расширение для Chrome и Firefox (`extension/`)
+## Расширение для Chrome и Firefox (`forum-article-saver/`)
 
 Сохраняет текущую страницу в **TXT / Markdown / JSON**. Версия 3.1. Стек: WXT + TypeScript + Preact, Manifest V3 (один код для Chrome и Firefox), Vitest + Playwright.
 
@@ -31,11 +31,11 @@ https://www.bettercap.org/project/introduction/
 
 **Права.** Только `activeTab`: доступ к странице появляется по клику, горячей клавише или из меню. «Все вкладки» запрашивает доступ ко всем сайтам отдельно, один раз.
 
-**Готовые сборки:** папка [`releases/`](releases/): `forum-article-saver-3.1.0-chrome.zip`, `…-firefox.zip`, `…-sources.zip` (исходники для AMO).
+**Готовые сборки:** папка [`forum-article-saver/releases/`](forum-article-saver/releases/): `forum-article-saver-3.1.0-chrome.zip`, `…-firefox.zip`, `…-sources.zip` (исходники для AMO).
 - Chrome / Edge / Brave: распаковать zip → `chrome://extensions` → «Режим разработчика» → «Загрузить распакованное» → папка с `manifest.json`.
 - Firefox: `about:debugging#/runtime/this-firefox` → «Загрузить временное дополнение» → выбрать zip (до перезапуска браузера; постоянная установка требует подписи на addons.mozilla.org).
 
-**Разработка** (`cd extension`):
+**Разработка** (`cd forum-article-saver`):
 
 ```bash
 npm ci

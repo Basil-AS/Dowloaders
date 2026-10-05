@@ -1,17 +1,17 @@
-name: extension
+name: forum-article-saver
 on:
   push:
-    paths: ['extension/**', '.github/workflows/extension.yml']
+    paths: ['forum-article-saver/**', '.github/workflows/forum-article-saver.yml']
   pull_request:
-    paths: ['extension/**']
+    paths: ['forum-article-saver/**']
 jobs:
   check:
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: extension } }
+    defaults: { run: { working-directory: forum-article-saver } }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: extension/package-lock.json }
+        with: { node-version: 22, cache: npm, cache-dependency-path: forum-article-saver/package-lock.json }
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
