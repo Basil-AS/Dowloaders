@@ -3,10 +3,12 @@ import type { ComponentChildren } from 'preact';
 import { browser } from 'wxt/browser';
 import { DEFAULT_SETTINGS, history as historyStore, sanitizeSettings } from '../../core/settings';
 import { buildFilename } from '../../core/filename';
-import { EXT } from '../../core/format';
+import { EXT, FORMAT_LABEL, FORMATS } from '../../core/format';
+import { saveBlob } from '../../core/run';
 import { count, type Key } from '../../core/i18n';
-import type { Format, HistoryEntry, Settings, Theme } from '../../core/types';
-import { fmtWhen, useSettings } from '../../ui/hooks';
+import type { Settings, Theme } from '../../core/types';
+import { Radios } from '../../ui/Radios';
+import { fmtWhen, useConfirm, useHistory, useSettings } from '../../ui/hooks';
 
 type BoolKey = 'comments' | 'links' | 'images' | 'code' | 'quotes' | 'metaHeader' | 'generic' | 'history';
 const TOKENS = ['{date}', '{time}', '{site}', '{title}', '{id}', '{count}'];
@@ -22,33 +24,18 @@ function Setting(props: { label: string; hint?: string; stack?: boolean; childre
   );
 }
 
-function Radios<T extends string>(props: { name: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
-  return (
-    <div class="seg" role="radiogroup">
-      {props.options.map(([v, label]) => (
-        <label>
-          <input type="radio" name={props.name} value={v} checked={props.value === v} onChange={() => props.onChange(v)} />
-          {label}
-        </label>
-      ))}
-    </div>
-  );
-}
-
 export function Options() {
   const { s, lang, patch, tr, replace } = useSettings();
-  const [hist, setHist] = useState<HistoryEntry[]>([]);
+  const hist = useHistory();
   const [saved, setSaved] = useState(false);
   const [note, setNote] = useState('');
-  const [sure, setSure] = useState(false);
+  const [resetArmed, confirmReset] = useConfirm();
   const [shortcut, setShortcut] = useState<string | null>(null);
   const tpl = useRef<HTMLInputElement>(null);
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    void historyStore.list().then(setHist);
     void browser.commands.getAll().then(cs => setShortcut(cs.find(c => c.name === 'save-page')?.shortcut || ''));
-    return historyStore.watch(setHist);
   }, []);
 
   if (!s) return null;
@@ -79,11 +66,7 @@ export function Options() {
     set({ filenameTemplate: s.filenameTemplate.slice(0, at) + tok + s.filenameTemplate.slice(el?.selectionEnd ?? at) });
   };
 
-  const download = (name: string, data: unknown) => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-    Object.assign(document.createElement('a'), { href: url, download: name }).click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  };
+  const download = (name: string, data: unknown) => saveBlob(JSON.stringify(data, null, 2), name, 'json');
   const importSettings = async (file: File) => {
     try {
       const j = JSON.parse(await file.text());
@@ -123,7 +106,7 @@ export function Options() {
             </select>
           </Setting>
           <Setting label={tr('o_format')}>
-            <Radios<Format> name="format" value={s.format} onChange={v => set({ format: v })} options={[['txt', 'TXT'], ['md', 'Markdown'], ['json', 'JSON']]} />
+            <Radios name="format" value={s.format} onChange={v => set({ format: v })} options={FORMATS} />
           </Setting>
         </section>
 
@@ -146,7 +129,7 @@ export function Options() {
         <section id="files">
           <h2>{tr('o_files')}</h2>
           <Setting label={tr('o_template')} hint={tr('o_templateHint')} stack for="o-tpl">
-            <input id="o-tpl" ref={tpl} class="field mono" style="width:100%" type="text" value={s.filenameTemplate} onChange={e => set({ filenameTemplate: e.currentTarget.value })} />
+            <input id="o-tpl" ref={tpl} class="field mono wide" type="text" value={s.filenameTemplate} onChange={e => set({ filenameTemplate: e.currentTarget.value })} />
             <div class="chips">
               {TOKENS.map(tok => (
                 <button type="button" class="chip" onClick={() => addToken(tok)}>{tok}</button>
@@ -171,35 +154,28 @@ export function Options() {
           </div>
           {hist.length > 0 && (
             <>
-              <p class="faint" style="margin-top:12px">{tr('o_historyCount', { n: hist.length })}</p>
+              <p class="faint mt">{tr('o_historyCount', { n: hist.length })}</p>
               <ul class="hist-list">
                 {hist.slice(0, 20).map(h => (
                   <li>
-                    <a href={h.url} target="_blank" rel="noreferrer" style="color:inherit">{h.title || h.url}</a>
-                    <div class="faint" style="font-size:12px">{h.site} · {h.format.toUpperCase()} · {h.count ? count(lang, h.count, 'items') + ' · ' : ''}{fmtWhen(h.ts, lang)}</div>
+                    <a href={h.url} target="_blank" rel="noreferrer">{h.title || h.url}</a>
+                    <div class="faint small">{h.site} · {FORMAT_LABEL[h.format]} · {h.count ? count(lang, h.count, 'items') + ' · ' : ''}{fmtWhen(h.ts, lang)}</div>
                   </li>
                 ))}
               </ul>
             </>
           )}
-          <div class="btn-row" style="margin-top:20px">
+          <div class="btn-row spaced">
             <button class="btn sm" onClick={() => download('forum-article-saver-settings.json', s)}>{tr('o_exportSettings')}</button>
-            <label class="btn sm" style="cursor:pointer">
+            <label class="btn sm">
               {tr('o_importSettings')}
               <input type="file" accept="application/json,.json" class="sr" onChange={e => { const f = e.currentTarget.files?.[0]; if (f) void importSettings(f); e.currentTarget.value = ''; }} />
             </label>
-            <button
-              class={`btn sm${sure ? ' danger' : ''}`}
-              onClick={() => {
-                if (!sure) { setSure(true); setTimeout(() => setSure(false), 3000); return; }
-                setSure(false);
-                replace({ ...DEFAULT_SETTINGS });
-              }}
-            >
-              {sure ? tr('o_resetSure') : tr('o_reset')}
+            <button class={`btn sm${resetArmed ? ' danger' : ''}`} onClick={() => confirmReset() && replace({ ...DEFAULT_SETTINGS })}>
+              {resetArmed ? tr('o_resetSure') : tr('o_reset')}
             </button>
           </div>
-          {note && <p class="muted" style="margin-top:10px" role="status">{note}</p>}
+          {note && <p class="muted mt" role="status">{note}</p>}
         </section>
 
         <section id="about">
@@ -210,7 +186,7 @@ export function Options() {
             <dt>{tr('o_shortcut')}</dt>
             <dd>
               {shortcut ? <kbd>{shortcut}</kbd> : <span class="muted">{tr('o_shortcutNone')}</span>}
-              <div class="faint" style="font-size:12px;margin-top:4px">{tr('o_shortcutHow')}</div>
+              <div class="faint small mt-s">{tr('o_shortcutHow')}</div>
             </dd>
             <dt>{tr('o_sites')}</dt>
             <dd>

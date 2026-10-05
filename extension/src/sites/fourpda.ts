@@ -1,7 +1,7 @@
 import type { Item, ParsedDoc, SiteAdapter } from '../core/types';
 import { getText, runPool } from '../core/http';
 import { domToText } from '../core/html';
-import { t } from '../core/i18n';
+import { t, tFor } from '../core/i18n';
 
 const LINK_TITLE = 'Ссылка на это сообщение';
 
@@ -83,6 +83,7 @@ export const fourpda: SiteAdapter = {
   detect: ({ url }) => /(^|\.)4pda\.(to|ru)$/.test(url.hostname) && url.searchParams.has('showtopic'),
 
   async extract({ url, doc, fetch: f }, o, progress): Promise<ParsedDoc> {
+    const L = tFor(o.lang);
     const topicId = url.searchParams.get('showtopic')!;
     const base = `${url.origin}/forum/index.php?showtopic=${topicId}`;
     const title = (doc.querySelector('h1[itemprop="name"]')?.textContent || doc.title || '').trim();
@@ -109,14 +110,14 @@ export const fourpda: SiteAdapter = {
         } catch (e) {
           errors.push(`стр. ${page + 1}: ${(e as Error).message}`);
         }
-        progress({ done: ++completed, total: count, text: `${completed}/${count} · ${fetched}` });
+        progress({ done: ++completed, total: count });
         return posts;
       },
       o.delayMs,
     );
 
     const items = results.flat();
-    if (!items.length) throw new Error(t(o.lang, 'e_nothing'));
+    if (!items.length) throw new Error(L('e_nothing'));
     return {
       id: topicId,
       site: '4pda.to',
@@ -124,13 +125,13 @@ export const fourpda: SiteAdapter = {
       title,
       url: base,
       meta: [
-        [t(o.lang, 'm_pages'), String(totalPages)],
-        [t(o.lang, 'm_range'), o.percent >= 100 ? t(o.lang, 'range_all') : t(o.lang, 'range_pages', { n: o.percent, from: start + 1, to: totalPages })],
+        [L('m_pages'), String(totalPages)],
+        [L('m_range'), o.percent >= 100 ? L('range_all') : L('range_pages', { n: o.percent, from: start + 1, to: totalPages })],
       ],
       body: '',
       items,
       totalItems: null,
-      warnings: errors.length ? [`${t(o.lang, 'w_pages_failed', { n: errors.length })} (${errors.slice(0, 5).join('; ')})`] : [],
+      warnings: errors.length ? [`${L('w_pages_failed', { n: errors.length })} (${errors.slice(0, 5).join('; ')})`] : [],
     };
   },
 };

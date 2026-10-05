@@ -1,7 +1,7 @@
 import type { Ctx, Item, ParsedDoc, SiteAdapter } from '../core/types';
 import { getJSON, runPool } from '../core/http';
 import { domToText } from '../core/html';
-import { t } from '../core/i18n';
+import { t, tFor } from '../core/i18n';
 
 const topicId = (path: string) => (path.match(/\/t\/(?:[^/]+\/)?(\d+)(?:\/\d+)?\/?$/) ?? path.match(/\/t\/[^/]+\/(\d+)/))?.[1] ?? null;
 
@@ -38,9 +38,10 @@ export const discourse: SiteAdapter = {
   detect: ({ url, doc }: Ctx) => isDiscourse(doc) && !!topicId(url.pathname),
 
   async extract({ url, doc, fetch: f }, o, progress): Promise<ParsedDoc> {
+    const L = tFor(o.lang);
     const id = topicId(url.pathname)!;
     const base = `${url.origin}/t/${id}`;
-    progress({ done: 0, total: 1, text: 'topic' });
+    progress({ done: 0, total: 1 });
     const topic = await getJSON(f, `${base}.json`);
     const stream: number[] = topic.post_stream?.stream ?? [];
     const take = o.percent >= 100 ? stream.length : Math.max(1, Math.ceil((stream.length * o.percent) / 100));
@@ -61,10 +62,10 @@ export const discourse: SiteAdapter = {
         try {
           const j = await getJSON(f, `${base}/posts.json?${ch.map(i => `post_ids[]=${i}`).join('&')}&include_suggested=false`);
           for (const p of j.post_stream?.posts ?? []) byId.set(p.id, p);
-        } catch (e) {
-          warnings.push((e as Error).message);
+        } catch {
+          /* недостающие посты учтём ниже одним предупреждением */
         }
-        progress({ done: ++done, total: chunks.length, text: `${done}/${chunks.length}` });
+        progress({ done: ++done, total: chunks.length });
       },
       o.delayMs,
     );
@@ -81,21 +82,19 @@ export const discourse: SiteAdapter = {
         score: likes || null,
         level: 0,
         replyTo: p.reply_to_post_number ? String(p.reply_to_post_number) : null,
-        text: p.hidden ? t(o.lang, 'w_hidden_post') : cookedToText(p.cooked, o, doc),
+        text: p.hidden ? L('w_hidden_post') : cookedToText(p.cooked, o, doc),
       });
     }
-    warnings.length = 0;
-    if (items.length < wanted.length) warnings.push(t(o.lang, 'w_posts_failed', { n: wanted.length - items.length }));
+    if (items.length < wanted.length) warnings.push(L('w_posts_failed', { n: wanted.length - items.length }));
 
     const tags = (topic.tags ?? []).map((t: any) => (typeof t === 'string' ? t : t.name)).join(', ');
-    const L = (k: Parameters<typeof t>[1]) => t(o.lang, k);
     const meta: [string, string][] = [
       [L('m_created'), topic.created_at ?? ''],
       [L('m_views'), String(topic.views ?? '—')],
       [L('m_likes'), String(topic.like_count ?? '—')],
       [L('m_posts'), String(stream.length)],
     ];
-    if (o.percent < 100) meta.push([L('m_range'), t(o.lang, 'range_last', { n: o.percent })]);
+    if (o.percent < 100) meta.push([L('m_range'), L('range_last', { n: o.percent })]);
     if (tags) meta.push([L('m_tags'), tags]);
     return {
       id,

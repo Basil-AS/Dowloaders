@@ -1,10 +1,7 @@
 // E2E: собранное расширение в настоящем Chromium. Запуск: npm run build && npm run e2e
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { launch, extId, tmp, SITES } from './harness.mjs';
-
-const popupUrl = `chrome-extension://${extId}/popup.html`;
-const optionsUrl = `chrome-extension://${extId}/options.html`;
+import { launch, openPopup, optionsUrl, cleanup, SITES } from './harness.mjs';
 const results = [];
 const check = async (name, fn) => {
   let r;
@@ -13,18 +10,6 @@ const check = async (name, fn) => {
   if (process.env.DEBUG_E2E) console.log(r[0] === 'ok' ? '  ✓' : '  ✗', r[1]);
 };
 
-async function openPopup(ctx, siteUrl) {
-  const page = await ctx.newPage();
-  await page.goto(siteUrl);
-  const pop = await ctx.newPage();
-  await pop.goto(popupUrl);
-  const tabId = await pop.evaluate(async u => (await chrome.tabs.query({})).find(t => t.url === u).id, siteUrl);
-  await pop.goto(`${popupUrl}?tabId=${tabId}`);
-  await pop.waitForSelector('.popup');
-  await pop.waitForFunction(() => document.querySelector('.where, .head-top')?.textContent !== '');
-  await pop.waitForTimeout(250);
-  return { page, pop };
-}
 const saveBtn = pop => pop.getByRole('button', { name: /^(Сохранить как|Save as)/ });
 async function runDownload(page, pop) {
   const dl = page.waitForEvent('download', { timeout: 15000 });
@@ -163,7 +148,7 @@ await check('все вкладки: сохраняет известные пло
 });
 
 await ctx.close();
-fs.rmSync(tmp, { recursive: true, force: true });
+cleanup();
 for (const [st, n] of results) console.log(st === 'ok' ? '✓' : '✗', n);
 const failed = results.filter(r => r[0] !== 'ok').length;
 console.log(`\n${results.length - failed}/${results.length} passed`);

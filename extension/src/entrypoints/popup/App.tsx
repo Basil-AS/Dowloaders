@@ -1,69 +1,63 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
-import { detect, runOnTab } from '../../core/pipeline';
+import { detect, runOnTab, saveAllTabs } from '../../core/pipeline';
 import { history as historyStore } from '../../core/settings';
 import { buildFilename } from '../../core/filename';
-import { EXT } from '../../core/format';
+import { EXT, FORMAT_LABEL, FORMATS } from '../../core/format';
 import { count, type Key } from '../../core/i18n';
 import type { DetectResult, Msg, RunResult } from '../../core/messages';
-import type { Format, HistoryEntry } from '../../core/types';
+import type { DocKind } from '../../core/types';
 import { IconCopy, IconDownload, IconGear } from '../../ui/icons';
-import { fmtWhen, useSettings } from '../../ui/hooks';
+import { Radios } from '../../ui/Radios';
+import { fmtWhen, useHistory, useSettings } from '../../ui/hooks';
 
 type Status = { kind: 'idle' | 'run' | 'ok' | 'err'; text: string };
 
-const FORMATS: { id: Format; label: string }[] = [
-  { id: 'txt', label: 'TXT' },
-  { id: 'md', label: 'Markdown' },
-  { id: 'json', label: 'JSON' },
-];
 const SITES: [string, Key][] = [
   ['Хабр', 'p_site_habr'],
   ['Reddit', 'p_site_reddit'],
   ['4PDA', 'p_site_4pda'],
   ['Discourse', 'p_site_discourse'],
 ];
+const KIND: Record<DocKind, Key> = { article: 'p_kind_article', post: 'p_kind_post', topic: 'p_kind_topic' };
+
+async function currentTabId(): Promise<number | undefined> {
+  const q = new URLSearchParams(location.search).get('tabId'); // для автотестов
+  return q ? Number(q) : (await browser.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+}
 
 export function App() {
   const { s, lang, patch, tr } = useSettings();
-  const [tabId, setTabId] = useState<number | null>(null);
+  const hist = useHistory(3);
+  const [tabId, setTabId] = useState<number | null | undefined>(undefined);
   const [site, setSite] = useState<DetectResult | null | undefined>(undefined);
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' });
   const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
-  const [hist, setHist] = useState<HistoryEntry[]>([]);
-  const started = useRef(false);
 
+  // Вкладку ищем сразу, параллельно с загрузкой настроек; определение страницы ждёт только флаг generic.
   useEffect(() => {
-    if (!s || started.current) return;
-    started.current = true;
-    (async () => {
-      setHist((await historyStore.list()).slice(0, 3));
-      const q = new URLSearchParams(location.search).get('tabId'); // для автотестов
-      const id = q ? Number(q) : (await browser.tabs.query({ active: true, currentWindow: true }))[0]?.id;
-      if (id == null) return setSite(null);
-      setTabId(id);
-      try {
-        setSite(await detect(id, s.generic));
-      } catch (e) {
-        setSite(null);
-        setStatus({ kind: 'err', text: tr('p_cantInject') });
-      }
-    })();
-  }, [s]);
-
-  useEffect(() => {
+    void currentTabId().then(id => setTabId(id ?? null));
     const onMsg = (raw: unknown) => {
       const m = raw as Msg;
-      if (m.type === 'fas/progress' && m.progress.total) setProg({ done: m.progress.done, total: m.progress.total });
+      if (m.type === 'fas/progress' && m.progress.total) setProg(m.progress);
     };
     browser.runtime.onMessage.addListener(onMsg);
     return () => browser.runtime.onMessage.removeListener(onMsg);
   }, []);
 
+  const generic = s?.generic;
+  useEffect(() => {
+    if (generic === undefined || tabId === undefined) return;
+    if (tabId === null) return setSite(null);
+    detect(tabId, generic).then(setSite, () => {
+      setSite(null);
+      setStatus({ kind: 'err', text: tr('p_cantInject') });
+    });
+  }, [generic, tabId]);
+
   if (!s) return null;
   const running = status.kind === 'run';
   const unit = site?.kind === 'topic' ? 'posts' : 'comments';
-  const refreshHist = async () => setHist((await historyStore.list()).slice(0, 3));
 
   const finish = async (res: RunResult, action: 'download' | 'copy') => {
     setProg(null);
@@ -71,19 +65,17 @@ export function App() {
     if (action === 'copy' && res.text != null) {
       try {
         await navigator.clipboard.writeText(res.text);
-      } catch {
-        return setStatus({ kind: 'err', text: tr('p_failed', { msg: 'clipboard' }) });
+      } catch (e) {
+        return setStatus({ kind: 'err', text: tr('p_failed', { msg: (e as Error).message }) });
       }
       setStatus({ kind: 'ok', text: tr('p_copied') });
     } else {
-      const n = res.count ? ` · ${count(lang, res.count, unit)}` : '';
-      setStatus({ kind: 'ok', text: `${tr('p_saved')}${n}` });
+      setStatus({ kind: 'ok', text: `${tr('p_saved')}${res.count ? ` · ${count(lang, res.count, unit)}` : ''}` });
     }
-    void refreshHist();
   };
 
   const go = async (action: 'download' | 'copy') => {
-    if (tabId == null) return;
+    if (typeof tabId !== 'number') return;
     setStatus({ kind: 'run', text: tr('p_saving') });
     setProg({ done: 0, total: 0 });
     await finish(await runOnTab(tabId, action, s), action);
@@ -92,28 +84,13 @@ export function App() {
   const allTabs = async () => {
     const origins = ['<all_urls>'];
     if (!(await browser.permissions.contains({ origins })) && !(await browser.permissions.request({ origins }))) return;
-    const tabs = (await browser.tabs.query({ currentWindow: true })).filter(x => x.id != null && /^https?:/.test(x.url ?? ''));
-    let ok = 0;
-    let total = 0;
-    for (const tab of tabs) {
-      try {
-        const d = await detect(tab.id!, false); // «все вкладки» берёт только известные площадки
-        if (!d) continue;
-      } catch {
-        continue;
-      }
-      total++;
-      setStatus({ kind: 'run', text: `${tr('p_saving')} · ${total}` });
-      if ((await runOnTab(tab.id!, 'download', { ...s, generic: false })).ok) ok++;
-    }
+    setStatus({ kind: 'run', text: tr('p_saving') });
+    const { ok, total } = await saveAllTabs(s);
     setProg(null);
     setStatus(total ? { kind: ok ? 'ok' : 'err', text: tr('p_allTabsDone', { ok, total }) } : { kind: 'err', text: tr('p_allTabsNone') });
-    void refreshHist();
   };
 
-  const host = site?.host ?? '';
-  const fileHint = site ? buildFilename(s.filenameTemplate, { title: site.title, site: host, count: undefined }, EXT[s.format]) : '';
-  const kindLabel = site ? tr(`p_kind_${site.kind}` as Key) : '';
+  const fileHint = site ? buildFilename(s.filenameTemplate, { title: site.title, site: site.label }, EXT[s.format]) : '';
   const pct = prog && prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
   const amountText = s.percent >= 100 ? tr('p_amountAll') : tr('p_amountLast', { n: s.percent });
 
@@ -124,19 +101,19 @@ export function App() {
           <div class="where">
             {site ? (
               <>
-                <b>{site.id === 'generic' ? host : site.name}</b>
+                <b>{site.label}</b>
                 <span aria-hidden="true">·</span>
-                <span>{kindLabel}</span>
+                <span>{tr(KIND[site.kind])}</span>
               </>
             ) : (
-              <span>{site === undefined ? '' : tr('p_unsupported')}</span>
+              <span>{site === null ? tr('p_unsupported') : ''}</span>
             )}
           </div>
           <button class="icon-btn" title={tr('p_settings')} aria-label={tr('p_settings')} onClick={() => browser.runtime.openOptionsPage()}>
             <IconGear />
           </button>
         </div>
-        {site && <h1 class="page-title">{site.title || host}</h1>}
+        {site && <h1 class="page-title">{site.title || site.label}</h1>}
       </header>
 
       {site === null && (
@@ -156,7 +133,6 @@ export function App() {
               </li>
             )}
           </ul>
-          {status.kind === 'err' && <p class="err" style="margin-top:10px;color:var(--danger)">{status.text}</p>}
         </section>
       )}
 
@@ -165,14 +141,7 @@ export function App() {
           <section class="controls" aria-label={tr('p_format')}>
             <div class="row">
               <span class="lbl" id="fmt-l">{tr('p_format')}</span>
-              <div class="seg grow" role="radiogroup" aria-labelledby="fmt-l">
-                {FORMATS.map(f => (
-                  <label>
-                    <input type="radio" name="format" value={f.id} checked={s.format === f.id} onChange={() => patch({ format: f.id })} />
-                    {f.label}
-                  </label>
-                ))}
-              </div>
+              <Radios class="grow" name="format" labelledBy="fmt-l" value={s.format} options={FORMATS} onChange={v => patch({ format: v })} />
             </div>
             {site.hasComments && (
               <div class="row">
@@ -192,17 +161,17 @@ export function App() {
             )}
           </section>
 
-          <section>
+          <section class="save">
             <div class="actions">
               <button class="btn primary" disabled={running} onClick={() => go('download')}>
                 <IconDownload />
-                {tr('p_save', { fmt: FORMATS.find(f => f.id === s.format)!.label })}
+                {tr('p_save', { fmt: FORMAT_LABEL[s.format] })}
               </button>
               <button class="btn icon" disabled={running} onClick={() => go('copy')} title={tr('p_copy')} aria-label={tr('p_copy')}>
                 <IconCopy />
               </button>
             </div>
-            <p class="fname mono" title={fileHint} style="margin-top:8px">{fileHint}</p>
+            <p class="fname mono" title={fileHint}>{fileHint}</p>
           </section>
         </>
       )}
@@ -213,7 +182,7 @@ export function App() {
             <i style={{ width: `${pct}%` }} />
           </div>
         )}
-        {status.text && site !== null && (
+        {status.text && (
           <p class={status.kind === 'ok' ? 'ok' : status.kind === 'err' ? 'err' : ''}>
             {status.text}
             {running && prog && prog.total > 0 && <span class="num"> · {tr('p_progress', { done: prog.done, total: prog.total })}</span>}
@@ -225,9 +194,7 @@ export function App() {
         <header>
           <h2>{tr('p_recent')}</h2>
           {hist.length > 0 && (
-            <button class="link" style="font-size:12px" onClick={async () => { await historyStore.clear(); setHist([]); }}>
-              {tr('p_clear')}
-            </button>
+            <button class="link small" onClick={() => historyStore.clear()}>{tr('p_clear')}</button>
           )}
         </header>
         {hist.length ? (
@@ -235,12 +202,12 @@ export function App() {
             {hist.map(h => (
               <li>
                 <a href={h.url} target="_blank" rel="noreferrer" title={h.filename}>{h.title || h.url}</a>
-                <small>{h.site} · {h.format.toUpperCase()} · {fmtWhen(h.ts, lang)}</small>
+                <small>{h.site} · {FORMAT_LABEL[h.format]} · {fmtWhen(h.ts, lang)}</small>
               </li>
             ))}
           </ul>
         ) : (
-          <p class="faint" style="padding-top:6px">{tr('p_none')}</p>
+          <p class="faint empty">{tr('p_none')}</p>
         )}
       </section>
 

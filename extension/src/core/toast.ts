@@ -3,7 +3,7 @@ import { t } from './i18n';
 
 /** Плашка прогресса на странице. Shadow DOM: стили сайта на неё не влияют, её стили — на сайт. */
 export interface Toast {
-  update(done: number, total: number, text?: string): void;
+  update(done: number, total: number): void;
   done(name: string): void;
   fail(message: string): void;
   close(): void;
@@ -46,22 +46,23 @@ export function createToast(opts: { site: string; lang: Lang; theme: Theme }, do
   const fill = mk('f', mk('bar', box));
   (doc.body ?? doc.documentElement).appendChild(host);
 
-  const set = (ti: string, su: string, pct?: number) => {
-    title.textContent = ti;
-    sub.textContent = su;
-    if (pct != null) fill.style.width = `${pct}%`;
-  };
-  set(`${opts.site}: ${t(opts.lang, 'p_saving').toLowerCase()}`, '');
+  title.textContent = t(opts.lang, 'p_savingSite', { site: opts.site });
   const close = () => host.remove();
   return {
-    update: (done, total, text) => set(`${opts.site}: ${t(opts.lang, 'p_saving').toLowerCase()}`, text ?? t(opts.lang, 'p_progress', { done, total }), total ? Math.round((done / total) * 100) : 0),
+    update: (done, total) => {
+      sub.textContent = t(opts.lang, 'p_progress', { done, total });
+      fill.style.width = `${total ? Math.round((done / total) * 100) : 0}%`;
+    },
     done: name => {
-      set(t(opts.lang, 'p_saved'), name, 100);
+      title.textContent = t(opts.lang, 'p_saved');
+      sub.textContent = name;
+      fill.style.width = '100%';
       setTimeout(close, 4500);
     },
     fail: message => {
       box.classList.add('err');
-      set(t(opts.lang, 'p_failed', { msg: '' }).replace(/:\s*$/, ''), message);
+      title.textContent = t(opts.lang, 'p_failedTitle');
+      sub.textContent = message;
       setTimeout(close, 8000);
     },
     close,

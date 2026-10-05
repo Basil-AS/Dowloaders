@@ -55,7 +55,6 @@ export interface ExtractOptions {
 export interface Progress {
   done: number;
   total: number;
-  text?: string;
 }
 export type ProgressFn = (p: Progress) => void;
 
@@ -73,6 +72,8 @@ export interface SiteAdapter {
   /** Поддерживает «последние N %». */
   paged: boolean;
   hasComments: boolean;
+  /** Запасной адаптер: используется, только если ни один конкретный не подошёл и это разрешено настройками. */
+  fallback?: boolean;
   detect(ctx: Ctx): boolean;
   extract(ctx: Ctx, o: ExtractOptions, progress: ProgressFn): Promise<ParsedDoc>;
 }

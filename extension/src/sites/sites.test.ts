@@ -187,6 +187,6 @@ describe('generic (статьи на любых сайтах)', () => {
   it('переключатель generic отключает адаптер', () => {
     const ctx = mkCtx('https://blog.example.com/posts/x', html);
     expect(pickAdapter(ADAPTERS, ctx)?.id).toBe('generic');
-    expect(pickAdapter(ADAPTERS, ctx, { generic: false })).toBeUndefined();
+    expect(pickAdapter(ADAPTERS, ctx, { fallback: false })).toBeUndefined();
   });
 });

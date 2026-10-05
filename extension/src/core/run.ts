@@ -8,10 +8,13 @@ export interface RunOutput {
   filename: string;
 }
 
-export function pickAdapter(adapters: SiteAdapter[], ctx: Ctx, opts: { generic?: boolean } = {}): SiteAdapter | undefined {
-  const allowGeneric = opts.generic ?? true;
+/** Хост без www/old/new — как сайт показывается в интерфейсе и в имени файла. */
+export const hostLabel = (u: URL | Location) => u.hostname.replace(/^(www|old|new)\./, '');
+
+export function pickAdapter(adapters: SiteAdapter[], ctx: Ctx, opts: { fallback?: boolean } = {}): SiteAdapter | undefined {
+  const allowFallback = opts.fallback ?? true;
   return adapters.find(a => {
-    if (a.id === 'generic' && !allowGeneric) return false;
+    if (a.fallback && !allowFallback) return false;
     try {
       return a.detect(ctx);
     } catch {

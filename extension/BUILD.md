@@ -9,8 +9,9 @@ npm run build:firefox # результат: dist/firefox-mv3/ (то, что вн
 npm run zip           # (опционально) dist/forum-article-saver-<версия>-firefox.zip
 ```
 
-Инструменты сборки: WXT (Vite), TypeScript, Preact. Код минифицируется стандартным Vite/esbuild,
-сторонний код — только `preact` (в `chunks/jsxRuntime-*.js`; предупреждение «Unsafe assignment to innerHTML»
-относится именно к внутренностям Preact, в коде расширения `innerHTML` не используется).
+Инструменты сборки: WXT (Vite), TypeScript, Preact. Код минифицируется стандартным Vite/esbuild.
+Сторонний код в сборке: `preact` (интерфейс) и `@mozilla/readability` (выделение основного текста страницы;
+версии зафиксированы в `package-lock.json`). Предупреждения «Unsafe assignment to innerHTML» относятся
+к внутренностям этих двух библиотек; в коде самого расширения `innerHTML` не используется.
 
 Проверка: `npm run typecheck && npm test` (юнит-тесты), `npm run e2e` (нужен Chromium).

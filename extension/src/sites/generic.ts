@@ -1,7 +1,8 @@
 import { Readability, isProbablyReaderable } from '@mozilla/readability';
 import type { ParsedDoc, SiteAdapter } from '../core/types';
 import { htmlToText } from '../core/html';
-import { t } from '../core/i18n';
+import { tFor } from '../core/i18n';
+import { hostLabel } from '../core/run';
 
 /** Запасной вариант для любого сайта: выделяет основной текст страницы (как режим чтения). */
 export const generic: SiteAdapter = {
@@ -10,6 +11,7 @@ export const generic: SiteAdapter = {
   kind: 'article',
   paged: false,
   hasComments: false,
+  fallback: true,
   detect: ({ doc }) => {
     try {
       return isProbablyReaderable(doc);
@@ -19,10 +21,10 @@ export const generic: SiteAdapter = {
   },
 
   async extract({ url, doc }, o, progress): Promise<ParsedDoc> {
+    const L = tFor(o.lang);
     progress({ done: 0, total: 1 });
     const article = new Readability(doc.cloneNode(true) as Document, { keepClasses: false }).parse();
-    if (!article?.content) throw new Error(t(o.lang, 'e_no_article'));
-    const L = (k: Parameters<typeof t>[1]) => t(o.lang, k);
+    if (!article?.content) throw new Error(L('e_no_article'));
     const meta: [string, string][] = [];
     if (article.byline) meta.push([L('m_author'), article.byline.trim()]);
     if (article.publishedTime) meta.push([L('m_date'), article.publishedTime]);
@@ -31,7 +33,7 @@ export const generic: SiteAdapter = {
     progress({ done: 1, total: 1 });
     return {
       id: url.pathname.split('/').filter(Boolean).pop() ?? '',
-      site: url.hostname.replace(/^www\./, ''),
+      site: hostLabel(url),
       kind: 'article',
       title: (article.title || doc.title || url.hostname).trim(),
       url: url.href,

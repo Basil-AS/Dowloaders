@@ -1,7 +1,7 @@
 import type { Item, ParsedDoc, SiteAdapter } from '../core/types';
 import { getJSON } from '../core/http';
 import { htmlToText } from '../core/html';
-import { t } from '../core/i18n';
+import { t, tFor } from '../core/i18n';
 
 interface HabrComment {
   id: number | string;
@@ -25,15 +25,15 @@ export const habr: SiteAdapter = {
 
   async extract({ url, fetch: f }, o, progress): Promise<ParsedDoc> {
     const id = (url.pathname.match(ID_RE) ?? url.pathname.match(/\/(\d+)\/?$/))?.[1];
-    if (!id) throw new Error(t(o.lang, 'e_no_id'));
-    const L = (k: Parameters<typeof t>[1]) => t(o.lang, k);
+    const L = tFor(o.lang);
+    if (!id) throw new Error(L('e_no_id'));
     const lang = url.pathname.split('/')[1] === 'en' ? 'en' : 'ru';
     const base = `${url.origin}/kek/v2/articles/${id}/`;
     const q = `?fl=${lang}&hl=${lang}`;
     const mode = o.format === 'md' ? 'md' : 'text';
     const text = (html: string) => htmlToText(html, { mode, links: o.links, images: o.images });
 
-    progress({ done: 0, total: 2, text: 'article' });
+    progress({ done: 0, total: 2 });
     const art = await getJSON(f, base + q);
     const title = text(art.titleHtml ?? art.title ?? '');
     const s = art.statistics ?? {};
@@ -54,7 +54,7 @@ export const habr: SiteAdapter = {
     let total: number | null = null;
 
     if (o.comments) {
-      progress({ done: 1, total: 2, text: 'comments' });
+      progress({ done: 1, total: 2 });
       try {
         const c = await getJSON<{ comments?: Record<string, HabrComment>; threads?: (number | string)[] }>(f, base + 'comments/' + q);
         const map = c.comments ?? {};
@@ -86,7 +86,7 @@ export const habr: SiteAdapter = {
         roots.forEach(r => emit(r, 0));
         list.filter(x => x.parentId && !map[String(x.parentId)]).forEach(x => emit(x, 1)); // «осиротевшие»
       } catch (e) {
-        warnings.push(t(o.lang, 'w_comments_failed', { msg: (e as Error).message }));
+        warnings.push(L('w_comments_failed', { msg: (e as Error).message }));
       }
     }
     progress({ done: 2, total: 2 });

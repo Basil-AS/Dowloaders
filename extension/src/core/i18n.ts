@@ -34,7 +34,6 @@ const ru = {
   w_pages_failed: 'Не загрузилось страниц: {n}',
   w_posts_failed: 'Не загрузилось сообщений: {n}',
   w_json_blocked: 'Reddit закрыл JSON (403), текст взят с открытой страницы',
-  w_hidden: '[скрыто]',
   w_hidden_post: '[сообщение скрыто]',
   w_hidden_comment: '[комментарий скрыт]',
   w_deleted: 'удалён',
@@ -63,6 +62,8 @@ const ru = {
   p_amountLast: 'последние {n}%',
   p_save: 'Сохранить как {fmt}',
   p_saving: 'Сохраняю',
+  p_savingSite: '{site}: сохраняю',
+  p_failedTitle: 'Не получилось',
   p_copy: 'Копировать',
   p_copied: 'Скопировано в буфер',
   p_saved: 'Сохранено',
@@ -135,7 +136,6 @@ const ru = {
   o_sites: 'Поддерживаются',
   o_source: 'Исходный код',
   menu: 'Сохранить страницу в файл',
-  command: 'Сохранить текущую страницу с настройками по умолчанию',
 } as const;
 
 export type Key = keyof typeof ru;
@@ -172,7 +172,6 @@ const en: Record<Key, string> = {
   w_pages_failed: 'Pages that failed to load: {n}',
   w_posts_failed: 'Posts that failed to load: {n}',
   w_json_blocked: 'Reddit blocked the JSON endpoint (403); text was read from the open page',
-  w_hidden: '[hidden]',
   w_hidden_post: '[post hidden]',
   w_hidden_comment: '[comment hidden]',
   w_deleted: 'deleted',
@@ -200,6 +199,8 @@ const en: Record<Key, string> = {
   p_amountLast: 'last {n}%',
   p_save: 'Save as {fmt}',
   p_saving: 'Saving',
+  p_savingSite: '{site}: saving',
+  p_failedTitle: 'Failed',
   p_copy: 'Copy',
   p_copied: 'Copied to clipboard',
   p_saved: 'Saved',
@@ -271,7 +272,6 @@ const en: Record<Key, string> = {
   o_sites: 'Supported sites',
   o_source: 'Source code',
   menu: 'Save page to file',
-  command: 'Save the current page with default settings',
 };
 
 const dict: Record<Lang, Record<Key, string>> = { ru, en };
@@ -282,10 +282,12 @@ export function resolveLang(pref: Lang | 'auto', nav: string = globalThis.naviga
 }
 
 export function t(lang: Lang, key: Key, vars?: Record<string, string | number>): string {
-  let s: string = dict[lang][key];
-  if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
-  return s;
+  const s: string = dict[lang][key];
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : s;
 }
+
+/** Переводчик, привязанный к языку: `const L = tFor(o.lang); L('m_author')`. */
+export const tFor = (lang: Lang) => (key: Key, vars?: Record<string, string | number>) => t(lang, key, vars);
 
 /** Склонение: plural('ru', 21, ['комментарий','комментария','комментариев']) → «комментарий». */
 export function plural(lang: Lang, n: number, forms: Plural): string {
@@ -302,7 +304,6 @@ const UNITS = {
   items: { ru: ['элемент', 'элемента', 'элементов'], en: ['item', 'items'] },
   comments: { ru: ['комментарий', 'комментария', 'комментариев'], en: ['comment', 'comments'] },
   posts: { ru: ['сообщение', 'сообщения', 'сообщений'], en: ['post', 'posts'] },
-  tabs: { ru: ['вкладка', 'вкладки', 'вкладок'], en: ['tab', 'tabs'] },
 } as const;
 
 export function count(lang: Lang, n: number, unit: keyof typeof UNITS): string {

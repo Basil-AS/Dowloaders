@@ -1,19 +1,18 @@
-import type { DocKind, ExtractOptions, Format, Progress } from './types';
+import type { DocKind, ExtractOptions, Format, Progress, Theme } from './types';
 
 export type Action = 'download' | 'copy';
 
 export type Msg =
-  | { type: 'fas/detect'; generic: boolean }
-  | { type: 'fas/run'; action: Action; opts: ExtractOptions; template: string; metaHeader: boolean; generic: boolean; theme: 'light' | 'dark' | 'system' }
+  | { type: 'fas/detect'; fallback: boolean }
+  | { type: 'fas/run'; action: Action; opts: ExtractOptions; template: string; metaHeader: boolean; fallback: boolean; theme: Theme }
   | { type: 'fas/progress'; progress: Progress };
 
 export interface DetectResult {
   id: string;
-  name: string;
+  /** Как показывать площадку: для универсального адаптера это хост страницы. */
+  label: string;
   kind: DocKind;
-  /** Заголовок страницы и хост — для шапки popup. */
   title: string;
-  host: string;
   paged: boolean;
   hasComments: boolean;
 }
@@ -21,6 +20,8 @@ export interface DetectResult {
 export interface RunResult {
   ok: boolean;
   error?: string;
+  /** Страница не поддерживается — не ошибка загрузки (нужно для «Все вкладки»). */
+  unsupported?: boolean;
   site?: string;
   title?: string;
   url?: string;

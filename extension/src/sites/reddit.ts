@@ -1,19 +1,19 @@
 import type { Ctx, ExtractOptions, Item, ParsedDoc, ProgressFn, SiteAdapter } from '../core/types';
 import { getJSON, sleep } from '../core/http';
 import { domToText } from '../core/html';
-import { t } from '../core/i18n';
+import { tFor } from '../core/i18n';
+import { hostLabel } from '../core/run';
 
-const siteLabel = (u: URL) => u.hostname.replace(/^(www|old|new)\./, '');
 const iso = (utc: number) => new Date(utc * 1000).toISOString();
 
 async function viaJSON({ url, fetch: f }: Ctx, o: ExtractOptions, progress: ProgressFn): Promise<ParsedDoc> {
+  const L = tFor(o.lang);
   const id = url.pathname.match(/\/comments\/([a-z0-9]+)/i)![1]!;
-  progress({ done: 0, total: 1, text: 'post' });
+  progress({ done: 0, total: 1 });
   const data = await getJSON(f, `${url.origin}/comments/${id}.json?limit=500&depth=100&raw_json=1&sort=top`).catch(() =>
     getJSON(f, `${url.origin}${url.pathname.replace(/\/$/, '')}.json?limit=500&raw_json=1`),
   );
   const p = data[0].data.children[0].data;
-  const L = (k: Parameters<typeof t>[1]) => t(o.lang, k);
   const meta: [string, string][] = [
     [L('m_subreddit'), `r/${p.subreddit}`],
     [L('m_author'), `u/${p.author}`],
@@ -43,7 +43,7 @@ async function viaJSON({ url, fetch: f }: Ctx, o: ExtractOptions, progress: Prog
     for (let round = 0; more.length && round < 30; round++) {
       const ids = [...new Set(more.splice(0).flatMap(x => x.children ?? []))].filter((i: string) => !nodes.has('t1_' + i));
       if (!ids.length) break;
-      progress({ done: round, total: round + 2, text: `+${ids.length}` });
+      progress({ done: round, total: round + 2 });
       for (let i = 0; i < ids.length; i += 100) {
         try {
           const j = await getJSON(f, `${url.origin}/api/morechildren.json?api_type=json&raw_json=1&link_id=t3_${id}&children=${ids.slice(i, i + 100).join(',')}`);
@@ -75,14 +75,14 @@ async function viaJSON({ url, fetch: f }: Ctx, o: ExtractOptions, progress: Prog
     (kids.get('t3_' + id) ?? []).forEach(c => emit(c, 0));
     for (const [k, v] of kids) if (k.startsWith('t1_') && !nodes.has(k)) v.forEach(c => emit(c, 1));
   }
-  return { id, site: siteLabel(url), kind: 'post', title: p.title, url: url.href, meta, body: p.selftext || '', items, totalItems: p.num_comments ?? null, warnings };
+  return { id, site: hostLabel(url), kind: 'post', title: p.title, url: url.href, meta, body: p.selftext || '', items, totalItems: p.num_comments ?? null, warnings };
 }
 
 /** Reddit может отдавать 403 на .json — тогда читаем уже отрисованную страницу (shreddit). */
 async function viaDOM({ url, doc }: Ctx, o: ExtractOptions, progress: ProgressFn): Promise<ParsedDoc> {
+  const L = tFor(o.lang);
   const post = doc.querySelector('shreddit-post');
-  if (!post) throw new Error(t(o.lang, 'e_no_post'));
-  const L = (k: Parameters<typeof t>[1]) => t(o.lang, k);
+  if (!post) throw new Error(L('e_no_post'));
   const attr = (el: Element, n: string) => el.getAttribute(n) ?? '';
   const mode = o.format === 'md' ? 'md' : 'text';
 
@@ -93,7 +93,7 @@ async function viaDOM({ url, doc }: Ctx, o: ExtractOptions, progress: ProgressFn
         b => MORE.test(b.textContent ?? '') && !b.dataset.fasClicked,
       );
       if (!btns.length) break;
-      progress({ done: round, total: round + 2, text: `+${btns.length}` });
+      progress({ done: round, total: round + 2 });
       btns.forEach(b => {
         b.dataset.fasClicked = '1';
         b.click();
@@ -120,7 +120,7 @@ async function viaDOM({ url, doc }: Ctx, o: ExtractOptions, progress: ProgressFn
   }
   return {
     id: url.pathname.match(/\/comments\/([a-z0-9]+)/i)?.[1] ?? '',
-    site: siteLabel(url),
+    site: hostLabel(url),
     kind: 'post',
     title: attr(post, 'post-title') || doc.title,
     url: url.href,

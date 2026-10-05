@@ -54,8 +54,25 @@ await ctx.route('**/*', r => {
   return r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: s?.html ?? 'x' });
 });
 
-const closeAll = async (...ps) => { for (const p of ps) await p.close().catch(() => {}); };
 
 return ctx;
 }
-export { extId, tmp, SITES };
+export { extId, SITES };
+
+export const popupUrl = `chrome-extension://${extId}/popup.html`;
+export const optionsUrl = `chrome-extension://${extId}/options.html`;
+
+/** Открывает страницу сайта и popup расширения, привязанный к её вкладке. */
+export async function openPopup(ctx, siteUrl, viewport) {
+  const page = await ctx.newPage();
+  await page.goto(siteUrl);
+  const pop = await ctx.newPage(viewport ? { viewport } : undefined);
+  await pop.goto(popupUrl);
+  const tabId = await pop.evaluate(async u => (await chrome.tabs.query({})).find(t => t.url === u).id, siteUrl);
+  await pop.goto(`${popupUrl}?tabId=${tabId}`);
+  await pop.waitForSelector('.popup');
+  await pop.waitForFunction(() => document.querySelector('.where')?.textContent !== '');
+  return { page, pop };
+}
+
+export const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true });
