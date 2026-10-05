@@ -1,0 +1,29 @@
+{
+  "name": "forum-article-saver",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Сохраняет статьи, темы и комментарии (Хабр, Reddit, 4PDA, Discourse) в TXT / Markdown / JSON",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox --mv3",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox --mv3",
+    "zip": "wxt zip && wxt zip -b firefox --mv3",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "e2e": "node scripts/e2e.mjs",
+    "postinstall": "wxt prepare"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "happy-dom": "^20.14.5",
+    "playwright-core": "^1.63.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "wxt": "^0.21.4"
+  },
+  "dependencies": {
+    "preact": "^11.0.0"
+  }
+}

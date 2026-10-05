@@ -11,17 +11,30 @@ https://www.bettercap.org/project/introduction/
 
 ## Расширение для Chrome и Firefox (`extension/`)
 
-Сохраняет текущую страницу в `.txt` (`YYYY-MM-DD - [сайт] - Заголовок.txt`):
+Сохраняет текущую страницу в **TXT / Markdown / JSON**. Стек: WXT + TypeScript + Preact, Manifest V3 (один код для Chrome и Firefox), Vitest + Playwright.
 
 | Площадка | Что берёт |
 |---|---|
-| Хабр (статьи, новости) | статья + дерево комментариев (через API Хабра) |
-| Reddit | пост + дерево комментариев (JSON; если 403 — разбор открытой страницы) |
-| 4PDA | тема форума, 5 потоков, можно скачать только последние N% |
-| Discourse (ntc.party и любой форум на этом движке) | вся тема через `/t/{id}.json` + `posts.json`, цитаты, ответы, лайки; можно последние N% |
+| Хабр (статьи, новости) | статья + дерево комментариев (API Хабра) |
+| Reddit | пост + дерево комментариев (JSON, если 403 — разбор открытой страницы, раскрытие «ещё ответы») |
+| 4PDA | тема форума (5 потоков, повторы при 503, дедупликация), цитаты/код/спойлеры |
+| Discourse (ntc.party и любой форум на этом движке) | вся тема через `/t/{id}.json` + `posts.json`, цитаты, ответы, лайки, теги |
 
-Discourse определяется автоматически по `<meta name="generator" content="Discourse …">`, поэтому работает не только на ntc.party.
+Discourse определяется автоматически по `<meta name="generator" content="Discourse …">`.
 
-**Установка:** Chrome — `chrome://extensions` → «Режим разработчика» → «Загрузить распакованное» → папка `extension/`.
-Firefox — `about:debugging#/runtime/this-firefox` → «Загрузить временное дополнение» → `extension/manifest.json`.
-Сборка архивов: `./build-extension.sh`. Использование: открыть страницу → иконка расширения → «Скачать».
+**Управление:** popup (формат, комментарии, «последние N %», Скачать / Копировать, «Все вкладки», история), страница настроек
+(язык RU/EN, глубина и мин. рейтинг комментариев, ссылки/картинки/код/цитаты, параллелизм и пауза, шаблон имени файла `{date} {time} {site} {title} {id} {count}`),
+пункт контекстного меню и горячая клавиша **Alt+Shift+S**. Права: только `activeTab` (доступ к странице — по клику); «Все вкладки» запрашивает доступ отдельно.
+
+**Разработка** (`cd extension`):
+
+```bash
+npm ci
+npm run dev            # Chrome с горячей перезагрузкой  (dev:firefox — Firefox)
+npm run typecheck && npm test
+npm run build && npm run e2e     # e2e: настоящий Chromium + моки площадок
+npm run zip            # dist/*.zip для Chrome и Firefox
+```
+
+Установка из сборки: Chrome — `chrome://extensions` → «Загрузить распакованное» → `extension/dist/chrome-mv3`;
+Firefox — `about:debugging#/runtime/this-firefox` → «Временное дополнение» → `extension/dist/firefox-mv3/manifest.json`.
