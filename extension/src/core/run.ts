@@ -35,7 +35,7 @@ export async function runAdapter(
 ): Promise<RunOutput> {
   const raw = await adapter.extract(ctx, o, progress);
   const doc = applyFilters(raw, o);
-  const text = formatDoc(doc, o, { meta: metaHeader, now });
+  const text = formatDoc(doc, o, { detailed: metaHeader, now });
   const filename = buildFilename(template, { title: doc.title, site: doc.site, count: doc.items.length, id: doc.id, now }, EXT[o.format]);
   return { doc, text, filename };
 }

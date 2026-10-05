@@ -104,15 +104,15 @@ for (const [name, s] of Object.entries(SITES)) {
   }
   if (name === 'discourse') {
     await check('discourse: 45 постов, цитата и код', () => {
-      assert.equal((out.text.match(/^\*\*#\d+ /gm) || []).length, 45);
-      assert.match(out.text, /> user1:/);
+      assert.equal((out.text.match(/^\*\*\d+ /gm) || []).length, 45);
+      assert.match(out.text, /> user1\n/);
       assert.match(out.text, /```\nls -la\n```/);
       assert.match(out.msg, /45 сообщений/);
     });
     await check('discourse: «последние 20%» → 9 постов', async () => {
       await pop.locator('input[type=range]').fill('20');
       const o2 = await runDownload(page, pop);
-      assert.equal((o2.text.match(/^\*\*#\d+ /gm) || []).length, 9);
+      assert.equal((o2.text.match(/^\*\*\d+ /gm) || []).length, 9);
     });
     await check('discourse: JSON валиден', async () => {
       await pop.getByLabel('JSON').check({ force: true });

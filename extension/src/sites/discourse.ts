@@ -1,4 +1,4 @@
-import type { Ctx, Item, ParsedDoc, SiteAdapter } from '../core/types';
+import type { Ctx, ImageMode, Item, Meta, ParsedDoc, SiteAdapter } from '../core/types';
 import { getJSON, runPool } from '../core/http';
 import { domToText } from '../core/html';
 import { t, tFor } from '../core/i18n';
@@ -11,20 +11,22 @@ export const isDiscourse = (doc: Document) =>
   doc.body.classList.contains('discourse-no-touch') ||
   doc.body.classList.contains('discourse-touch');
 
-export function cookedToText(html: string, o: { quotes: boolean; links: boolean; images: boolean; format: string }, doc: Document = document): string {
+export function cookedToText(html: string, o: { quotes: boolean; links: boolean; images: ImageMode; format: string }, doc: Document = document): string {
   const d = new DOMParser().parseFromString(`<body>${html ?? ''}</body>`, 'text/html');
   d.querySelectorAll('aside.quote').forEach(q => {
-    if (!o.quotes) return q.remove();
+    // Без цитат остаётся только имя цитируемого: смысл «кому отвечают» сохраняется, текст не дублируется.
     const who = (q.querySelector('.title')?.textContent ?? '').replace(/\s+/g, ' ').trim().replace(/:$/, '');
     const bq = doc.createElement('blockquote');
-    bq.textContent = (who ? who + ':\n' : '') + (q.querySelector('blockquote')?.textContent ?? '').trim();
+    bq.textContent = o.quotes ? (who ? who + ':\n' : '') + (q.querySelector('blockquote')?.textContent ?? '').trim() : who;
     q.replaceWith(bq);
   });
   d.querySelectorAll('div.meta, .onebox-metadata, .badge-wrapper').forEach(e => e.remove());
   d.querySelectorAll('a.lightbox').forEach(a => {
     const img = a.querySelector('img');
     if (!img) return;
-    a.replaceWith(o.images ? Object.assign(doc.createElement('span'), { textContent: `[img: ${a.getAttribute('href') || img.getAttribute('src')}]` }) : '');
+    // в режиме «адрес» берём ссылку на полноразмерный файл, иначе оставляем <img> — подпись/пропуск решает html.ts
+    if (o.images === 'url') a.replaceWith(Object.assign(doc.createElement('span'), { textContent: `[img: ${a.getAttribute('href') || img.getAttribute('src')}]` }));
+    else a.replaceWith(img);
   });
   return domToText(d.body, { mode: o.format === 'md' ? 'md' : 'text', links: o.links, images: o.images });
 }
@@ -88,11 +90,11 @@ export const discourse: SiteAdapter = {
     if (items.length < wanted.length) warnings.push(L('w_posts_failed', { n: wanted.length - items.length }));
 
     const tags = (topic.tags ?? []).map((t: any) => (typeof t === 'string' ? t : t.name)).join(', ');
-    const meta: [string, string][] = [
-      [L('m_created'), topic.created_at ?? ''],
-      [L('m_views'), String(topic.views ?? '—')],
-      [L('m_likes'), String(topic.like_count ?? '—')],
-      [L('m_posts'), String(stream.length)],
+    const meta: Meta[] = [
+      [L('m_created'), topic.created_at ?? '', true],
+      [L('m_views'), String(topic.views ?? '—'), true],
+      [L('m_likes'), String(topic.like_count ?? '—'), true],
+      [L('m_posts'), String(stream.length), true],
     ];
     if (o.percent < 100) meta.push([L('m_range'), L('range_last', { n: o.percent })]);
     if (tags) meta.push([L('m_tags'), tags]);

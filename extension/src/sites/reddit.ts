@@ -1,4 +1,4 @@
-import type { Ctx, ExtractOptions, Item, ParsedDoc, ProgressFn, SiteAdapter } from '../core/types';
+import type { Ctx, ExtractOptions, Item, Meta, ParsedDoc, ProgressFn, SiteAdapter } from '../core/types';
 import { getJSON, sleep } from '../core/http';
 import { domToText } from '../core/html';
 import { tFor } from '../core/i18n';
@@ -14,12 +14,12 @@ async function viaJSON({ url, fetch: f }: Ctx, o: ExtractOptions, progress: Prog
     getJSON(f, `${url.origin}${url.pathname.replace(/\/$/, '')}.json?limit=500&raw_json=1`),
   );
   const p = data[0].data.children[0].data;
-  const meta: [string, string][] = [
+  const meta: Meta[] = [
     [L('m_subreddit'), `r/${p.subreddit}`],
-    [L('m_author'), `u/${p.author}`],
+    [L('m_author'), p.author],
     [L('m_date'), iso(p.created_utc)],
     [L('m_score'), String(p.score)],
-    [L('m_comments'), String(p.num_comments)],
+    [L('m_comments'), String(p.num_comments), true],
   ];
   if (p.url && !p.is_self) meta.push([L('m_link'), p.url]);
 
@@ -63,7 +63,7 @@ async function viaJSON({ url, fetch: f }: Ctx, o: ExtractOptions, progress: Prog
       const flair = c.author_flair_text ? ` [${c.author_flair_text}]` : '';
       items.push({
         id: c.id,
-        author: `u/${c.author}${flair}`,
+        author: `${c.author}${flair}`,
         date: iso(c.created_utc),
         score: c.score ?? null,
         level,
@@ -109,7 +109,7 @@ async function viaDOM({ url, doc }: Ctx, o: ExtractOptions, progress: ProgressFn
       if (!txt) return;
       items.push({
         id: attr(c, 'thingid').replace(/^t1_/, '') || String(items.length + 1),
-        author: `u/${attr(c, 'author') || 'deleted'}`,
+        author: attr(c, 'author') || 'deleted',
         date: c.querySelector('time')?.getAttribute('datetime') ?? '',
         score: Number.isFinite(Number(attr(c, 'score'))) && attr(c, 'score') !== '' ? Number(attr(c, 'score')) : null,
         level: parseInt(attr(c, 'depth'), 10) || 0,
@@ -126,10 +126,10 @@ async function viaDOM({ url, doc }: Ctx, o: ExtractOptions, progress: ProgressFn
     url: url.href,
     meta: [
       [L('m_subreddit'), attr(post, 'subreddit-prefixed-name')],
-      [L('m_author'), `u/${attr(post, 'author')}`],
+      [L('m_author'), attr(post, 'author')],
       [L('m_date'), attr(post, 'created-timestamp')],
       [L('m_score'), attr(post, 'score')],
-      [L('m_comments'), attr(post, 'comment-count')],
+      [L('m_comments'), attr(post, 'comment-count'), true],
     ],
     body: body ? domToText(body, { mode, links: o.links, images: o.images }) : '',
     items,

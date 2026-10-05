@@ -78,7 +78,7 @@ describe('reddit', () => {
     const d = await reddit.extract(mkCtx('https://www.reddit.com/r/K/comments/p/slug/', html, f), o, noop);
     expect(d.title).toBe('DOM');
     expect(d.body).toBe('тело');
-    expect(d.items.map(i => [i.author, i.level, i.text])).toEqual([['u/a', 0, 'корень'], ['u/b', 1, 'вложенный']]);
+    expect(d.items.map(i => [i.author, i.level, i.text])).toEqual([['a', 0, 'корень'], ['b', 1, 'вложенный']]);
     expect(d.warnings[0]).toContain('403');
   });
 });
@@ -86,14 +86,19 @@ describe('reddit', () => {
 describe('4pda', () => {
   const page = `<table class="ipbtable" data-post="7"><tr><td class="row2" id="ph-7-d2">01.01.24, 10:00 Сообщение #1</td><td><span class="normalname"><a>Вася</a></span><a title="Ссылка на это сообщение">#5</a></td>
     <td><div class="postcolor"><div class="post-block quote"><div class="block-title">Цитата: Петя</div><div class="block-body">старое</div></div>привет<br>мир<div>блок</div><div class="post-block code"><div class="block-title">КОД</div><div class="block-body">ls -la</div></div><img src="x.png"></div></td></tr></table>`;
-  it('цитаты/код включаются и выключаются опциями', () => {
-    const on = parsePosts(new DOMParser().parseFromString(page, 'text/html'), { ...o }, new Set());
-    expect(on[0]).toMatchObject({ id: '5', author: 'Вася' });
-    expect(on[0]!.text).toContain('> Цитата: Петя:\n> старое');
-    expect(on[0]!.text).toContain('```\nls -la\n```');
-    expect(on[0]!.text).toContain('привет\nмир\nблок');
-    const off = parsePosts(new DOMParser().parseFromString(page, 'text/html'), { ...o, quotes: false, code: false, images: false }, new Set());
-    expect(off[0]!.text).toBe('привет\nмир\nблок');
+  it('цитаты: по умолчанию только имя, при желании полностью; код — по опции', () => {
+    const parse = (opts: object) => parsePosts(new DOMParser().parseFromString(page, 'text/html'), { ...o, ...opts }, new Set());
+    const short = parse({})[0]!;
+    expect(short).toMatchObject({ id: '5', author: 'Вася', date: '01.01.24, 10:00' });
+    expect(short.text.replace(/\n{2,}/g, '\n')).toBe('> Петя\nпривет\nмир\nблок\n```\nls -la\n```');
+    const full = parse({ quotes: true })[0]!;
+    expect(full.text).toContain('> Цитата: Петя:\n> старое');
+    expect(parse({ code: false })[0]!.text).not.toContain('ls -la');
+  });
+  it('номер — только цифры, дата без «Сообщение #N»', () => {
+    const html = '<table class="ipbtable" data-post="9"><tr><td class="row2" id="ph-9-d2">Сегодня, 14:05 Сообщение #123</td><td><span class="normalname"><a>u</a></span><a title="Ссылка на это сообщение">Сообщение #123</a></td><td><div class="postcolor">текст</div></td></tr></table>';
+    const [it] = parsePosts(new DOMParser().parseFromString(html, 'text/html'), o, new Set());
+    expect(it).toMatchObject({ id: '123', date: 'Сегодня, 14:05' });
   });
   it('дедупликация по data-post', () => {
     const seen = new Set<string>();
@@ -122,6 +127,15 @@ describe('4pda', () => {
   });
 });
 
+describe('discourse: домен в имени файла целиком', () => {
+  it('поддомен сохраняется', async () => {
+    const f = (async (u: string) => json({ title: 'T', slug: 's', post_stream: { stream: [], posts: [] } })) as never;
+    const html = '<html><head><meta name="generator" content="Discourse 3.3"></head><body></body></html>';
+    const d = await discourse.extract(mkCtx('https://forum.sub.example.co.uk/t/s/5', html, f), o, noop);
+    expect(d.site).toBe('forum.sub.example.co.uk');
+  });
+});
+
 describe('discourse', () => {
   const mkPost = (n: number) => ({ id: 1000 + n, post_number: n, username: 'u' + n, name: n % 2 ? 'Имя' + n : 'u' + n, created_at: '2024-05-01T10:00:00Z', reply_to_post_number: n > 1 ? n - 1 : null, actions_summary: [{ id: 2, count: n % 3 }], cooked: `<p>пост ${n}</p>` });
   const N = 45;
@@ -143,6 +157,7 @@ describe('discourse', () => {
     expect(chunks.sort((a, b) => a - b)).toEqual([5, 20]);
     expect(d.items[1]).toMatchObject({ replyTo: '1', score: 2 });
     expect(d.meta.find(([k]) => k === 'Теги')?.[1]).toBe('a, b');
+    expect(d.site).toBe('ntc.party'); // домен целиком, без отсечения уровней
   });
   it('последние N%', async () => {
     const d = await discourse.extract(mkCtx('https://ntc.party/t/s/18333', html, f), { ...o, delayMs: 0, percent: 20 }, noop);
@@ -150,8 +165,9 @@ describe('discourse', () => {
   });
   it('cooked: цитаты, смайлы, lightbox', () => {
     const cooked = '<aside class="quote"><div class="title">user1:</div><blockquote><p>цит</p></blockquote></aside><p>да <img class="emoji" alt=":smile:"> <a class="lightbox" href="https://f/1.png"><img src="https://f/1_t.png"></a></p>';
-    expect(cookedToText(cooked, o)).toBe('> user1:\n> цит\n\nда :smile: [img: https://f/1.png]');
-    expect(cookedToText(cooked, { ...o, quotes: false, images: false })).toBe('да :smile:');
+    expect(cookedToText(cooked, { ...o, quotes: true, images: 'url' })).toBe('> user1:\n> цит\n\nда :smile: [img: https://f/1.png]');
+    expect(cookedToText(cooked, o)).toBe('> user1\n\nда :smile:');
+    expect(cookedToText(cooked, { ...o, images: 'none' })).toBe('> user1\n\nда :smile:');
   });
 });
 
