@@ -46,3 +46,7 @@ npm run zip            # dist/*.zip для Chrome, Firefox и исходники
 npm run icons          # перерисовать иконки из scripts/icons.mjs
 npm run shots          # скриншоты интерфейса (4 варианта: тема × язык)
 ```
+
+## ALT-X KeepAlive (`altx-keepalive/`)
+
+Расширение для Chrome и Firefox: держит сессию на `update.altx-soft.ru` активной, пока открыта вкладка сайта (отключает клиентский 30-минутный таймер и по расписанию продлевает сессию обычным запросом). Версия 2.0: WXT + TypeScript + Preact, светлая и тёмная темы и язык по умолчанию из браузера, расписание через `alarms`, журнал, e2e на локальном HTTPS-макете сайта. Описание, установка и сборки: [`altx-keepalive/README.md`](altx-keepalive/README.md), готовые архивы: [`altx-keepalive/releases/`](altx-keepalive/releases/).
