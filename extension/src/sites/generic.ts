@@ -1,5 +1,5 @@
 import { Readability, isProbablyReaderable } from '@mozilla/readability';
-import type { ParsedDoc, SiteAdapter } from '../core/types';
+import type { Meta, ParsedDoc, SiteAdapter } from '../core/types';
 import { htmlToText } from '../core/html';
 import { tFor } from '../core/i18n';
 import { hostLabel } from '../core/run';
@@ -25,11 +25,11 @@ export const generic: SiteAdapter = {
     progress({ done: 0, total: 1 });
     const article = new Readability(doc.cloneNode(true) as Document, { keepClasses: false }).parse();
     if (!article?.content) throw new Error(L('e_no_article'));
-    const meta: [string, string][] = [];
+    const meta: Meta[] = [];
     if (article.byline) meta.push([L('m_author'), article.byline.trim()]);
     if (article.publishedTime) meta.push([L('m_date'), article.publishedTime]);
-    if (article.siteName) meta.push([L('m_site'), article.siteName]);
-    if (article.excerpt) meta.push([L('m_excerpt'), article.excerpt.replace(/\s+/g, ' ').trim()]);
+    if (article.siteName) meta.push([L('m_site'), article.siteName, true]);
+    if (article.excerpt) meta.push([L('m_excerpt'), article.excerpt.replace(/\s+/g, ' ').trim(), true]);
     progress({ done: 1, total: 1 });
     return {
       id: url.pathname.split('/').filter(Boolean).pop() ?? '',

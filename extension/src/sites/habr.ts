@@ -1,4 +1,4 @@
-import type { Item, ParsedDoc, SiteAdapter } from '../core/types';
+import type { Item, Meta, ParsedDoc, SiteAdapter } from '../core/types';
 import { getJSON } from '../core/http';
 import { htmlToText } from '../core/html';
 import { t, tFor } from '../core/i18n';
@@ -37,12 +37,12 @@ export const habr: SiteAdapter = {
     const art = await getJSON(f, base + q);
     const title = text(art.titleHtml ?? art.title ?? '');
     const s = art.statistics ?? {};
-    const meta: [string, string][] = [
+    const meta: Meta[] = [
       [L('m_author'), art.author?.alias ?? art.author?.login ?? '—'],
       [L('m_date'), art.timePublished ?? ''],
     ];
     if (art.statistics) {
-      meta.push([L('m_score'), String(s.score ?? '—')], [L('m_views'), String(s.readingCount ?? '—')], [L('m_bookmarks'), String(s.favoritesCount ?? '—')]);
+      meta.push([L('m_score'), String(s.score ?? '—')], [L('m_views'), String(s.readingCount ?? '—'), true], [L('m_bookmarks'), String(s.favoritesCount ?? '—'), true]);
     }
     const hubs = (art.hubs ?? []).map((h: any) => h.title);
     const tags = (art.tags ?? []).map((x: any) => x.titleHtml ?? x.title);

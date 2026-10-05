@@ -1,6 +1,8 @@
 export type Format = 'txt' | 'md' | 'json';
 export type Lang = 'ru' | 'en';
 export type Theme = 'system' | 'light' | 'dark';
+/** Картинки в тексте: ничего / только подпись / адрес. */
+export type ImageMode = 'none' | 'alt' | 'url';
 
 /** Один комментарий / пост форума. level — глубина вложенности (0 = корень). */
 export interface Item {
@@ -16,6 +18,9 @@ export interface Item {
 
 export type DocKind = 'article' | 'post' | 'topic';
 
+/** [название, значение, extra]: extra=true показывается только в подробной шапке. */
+export type Meta = [label: string, value: string, extra?: true];
+
 /** Единая модель результата для всех площадок. */
 export interface ParsedDoc {
   /** ID материала на площадке (для шаблона имени файла). */
@@ -24,7 +29,7 @@ export interface ParsedDoc {
   kind: DocKind;
   title: string;
   url: string;
-  meta: [string, string][];
+  meta: Meta[];
   /** Тело статьи/поста (для тем форумов — пусто). */
   body: string;
   items: Item[];
@@ -45,7 +50,7 @@ export interface ExtractOptions {
   /** null = без фильтра. */
   minScore: number | null;
   links: boolean;
-  images: boolean;
+  images: ImageMode;
   code: boolean;
   quotes: boolean;
   concurrency: number;
@@ -89,7 +94,7 @@ export interface Settings {
   minScore: number | null;
   percent: number;
   links: boolean;
-  images: boolean;
+  images: ImageMode;
   code: boolean;
   quotes: boolean;
   metaHeader: boolean;

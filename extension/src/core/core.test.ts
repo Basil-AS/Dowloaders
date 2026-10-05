@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { domToText, htmlToText } from './html';
-import { applyFilters, formatDoc } from './format';
+import { cleanUrl, domToText, htmlToText } from './html';
+import { applyFilters, formatDoc, relativize } from './format';
 import { buildFilename, sanitize } from './filename';
 import { DEFAULT_SETTINGS, sanitizeSettings, toExtractOptions } from './settings-model';
 import { fetchRetry, runPool } from './http';
@@ -29,7 +29,7 @@ describe('html', () => {
     expect(t).toBe('**жир** *курсив* [l](https://e.x)\n\n1. a\n2. b');
   });
   it('опции links/images', () => {
-    expect(htmlToText('<a href="https://e.x">l</a><img src="https://i/1.png">', { links: false, images: false })).toBe('l');
+    expect(htmlToText('<a href="https://e.x">l</a><img src="https://i/1.png">', { links: false, images: 'alt' })).toBe('l');
     expect(htmlToText('<img src="https://i/1.png">')).toBe('[img: https://i/1.png]');
     expect(htmlToText('<img class="emoji" alt=":)" src="e.png">')).toBe(':)');
   });
@@ -38,28 +38,85 @@ describe('html', () => {
   });
 });
 
-describe('format', () => {
-  it('txt: шапка, комментарии с отступом', () => {
-    const out = formatDoc(doc, opts, { now: new Date('2024-02-02T10:00:00Z') });
-    expect(out).toContain('Заголовок');
-    expect(out).toContain('Адрес: https://x.test/1');
-    expect(out).toContain('КОММЕНТАРИИ (4)');
-    expect(out).toContain('--- [ #1 | a |');
-    expect(out).toContain('    --- [ #2 | b | -3 | в ответ на #1 ] ---\n    плохой');
+describe('html: экономия', () => {
+  it('картинки: без адреса остаётся подпись, декор и смайлы отбрасываются', () => {
+    const h = '<img src="https://i/x.png" alt="График роста"><img src="https://i/s.png" alt=":)"><img src="https://i/y.png">';
+    expect(htmlToText(h, { images: 'alt' })).toBe('[img: График роста]');
+    expect(htmlToText(h, { images: 'url' })).toContain('[img: https://i/x.png]');
+    expect(htmlToText(h, { images: 'none' })).toBe('');
   });
-  it('md: заголовки и вложенные цитаты', () => {
-    const out = formatDoc(doc, { ...opts, format: 'md' });
-    expect(out.startsWith('# Заголовок')).toBe(true);
-    expect(out).toContain('## Комментарии (4)');
-    expect(out).toContain('>> **#3 · c');
+  it('ссылки: трекинг убирается, ссылка-текст не дублируется', () => {
+    expect(cleanUrl('https://a.b/p?utm_source=x&id=5&fbclid=z#h')).toBe('https://a.b/p?id=5#h');
+    expect(cleanUrl('https://a.b/p?utm_medium=x')).toBe('https://a.b/p');
+    expect(htmlToText('<a href="https://www.a.b/p/">a.b/p</a>')).toBe('https://www.a.b/p/');
   });
-  it('json: валидный и содержит items', () => {
-    const j = JSON.parse(formatDoc(doc, { ...opts, format: 'json' }));
-    expect(j.items).toHaveLength(4);
+});
+
+describe('format (экономный вывод)', () => {
+  const now = new Date('2024-02-02T10:00:00Z');
+  const topic: ParsedDoc = {
+    ...doc, kind: 'topic', meta: [['Теги', 'a'], ['Просмотров', '99', true]], body: '',
+    items: [
+      { id: '12', author: 'ann', date: '2024-05-01T10:00:00', score: 3, level: 0, replyTo: null, text: 'один\n\n\nдва' },
+      { id: '13', author: 'bob', date: '2024-05-01T10:05:00', score: 0, level: 0, replyTo: '12', text: 'ответ' },
+      { id: '14', author: 'cat', date: '2024-05-02T09:00:00', score: null, level: 0, replyTo: null, text: 'новый день' },
+    ],
+    totalItems: 3,
+  };
+  it('txt: без разделителей и служебных полей, вложенность через «>»', () => {
+    const out = formatDoc(doc, opts, { now });
+    expect(out).not.toMatch(/={3,}|-{3,}|\[ ?#/);
+    expect(out).toContain('Заголовок\nhttps://x.test/1\nАвтор: vasya');
+    expect(out).not.toContain('Выгружено');
+    expect(out).toContain('Комментарии 4');
+    expect(out).toMatch(/^a 2024-01-01 \d\d:\d\d \+5\nкорень$/m);
+    expect(out).toContain('\n> b -3\nплохой');
+    expect(out).toContain('\n>> c +1\nвнук плохого');
+  });
+  it('номер сообщения печатается один раз и только у тем форумов', () => {
+    const out = formatDoc(topic, opts, { now });
+    expect(out).toMatch(/^12 ann 2024-05-01 10:00 \+3$/m);
+    expect(out).toMatch(/^13 bob 10:05 →12$/m); // тот же день → только время; 0 рейтинга не печатаем
+    expect(out).toMatch(/^14 cat 2024-05-02 09:00$/m);
+    expect((out.match(/#12|\b12\b.*\b12\b/g) ?? []).length).toBe(0);
+    expect(out).toContain('один\nдва'); // пустые строки внутри сообщения схлопнуты
+    expect(formatDoc(doc, opts, { now })).not.toMatch(/#1\b/); // в деревьях номеров нет вовсе
+  });
+  it('ссылки на свой сайт: база объявлена в шапке, дальше относительные', () => {
+    const d: ParsedDoc = { ...doc, url: 'https://habr.com/ru/articles/1/', body: 'см. https://habr.com/ru/articles/2/ и (https://www.habr.com/ru/users/x/) и https://other.org/p', items: [] };
+    const out = formatDoc(d, opts, { now });
+    expect(out).toContain('относятся к https://habr.com');
+    expect(out).toContain('см. /ru/articles/2/ и (/ru/users/x/) и https://other.org/p');
+    expect(formatDoc({ ...d, body: 'один https://habr.com/ru/a/' }, opts, { now })).toContain('https://habr.com/ru/a/'); // одна ссылка — не сжимаем
+    expect(relativize('x', 'не url').base).toBeNull();
+    expect(formatDoc(d, { ...opts, format: 'json' }, { now })).toContain('https://habr.com/ru/articles/2/'); // JSON не трогаем
+  });
+  it('подробная шапка добавляет extra-поля и время выгрузки', () => {
+    expect(formatDoc(topic, opts, { now })).not.toContain('Просмотров');
+    const d = formatDoc(topic, opts, { now, detailed: true });
+    expect(d).toContain('Просмотров: 99');
+    expect(d).toContain('Выгружено:');
+  });
+  it('md и en-локаль', () => {
+    const md = formatDoc(doc, { ...opts, format: 'md' }, { now });
+    expect(md.startsWith('# Заголовок')).toBe(true);
+    expect(md).toContain('## Комментарии 4');
+    expect(md).toContain('**>> c +1**');
+    expect(formatDoc(doc, { ...opts, lang: 'en' }, { now })).toContain('Comments 4');
+  });
+  it('json: компактный, без пустых полей', () => {
+    const raw = formatDoc(topic, { ...opts, format: 'json' }, { now });
+    expect(raw).not.toContain('\n  ');
+    const j = JSON.parse(raw);
+    expect(j.items).toHaveLength(3);
+    expect(j.items[1]).toEqual({ id: '13', author: 'bob', date: '2024-05-01T10:05:00', replyTo: '12', text: 'ответ' });
     expect(j.exportedAt).toBeTruthy();
   });
-  it('en-локаль', () => {
-    expect(formatDoc(doc, { ...opts, lang: 'en' })).toContain('COMMENTS (4)');
+  it('экономия: вывод заметно короче прежнего формата', () => {
+    const many: ParsedDoc = { ...doc, items: Array.from({ length: 50 }, (_, i) => ({ id: String(i + 1), author: 'user' + i, date: '2024-05-01T10:00:00', score: 1, level: i % 3, replyTo: String(i), text: 'короткий комментарий' })), totalItems: 50 };
+    const out = formatDoc(many, opts, { now });
+    const oldStyle = many.items.map(it => `--- [ #${it.id} | ${it.author} | 01.05.2024, 10:00:00 | +1 | ответ на #${Number(it.id) - 1} ] ---\n${'    '.repeat(it.level)}${it.text}`).join('\n\n');
+    expect(out.length).toBeLessThan(oldStyle.length * 0.7);
   });
 });
 
@@ -110,6 +167,13 @@ describe('settings', () => {
     ]);
     expect(count('en', 1, 'posts')).toBe('1 post');
     expect(plural('en', 0, ['a', 'b'])).toBe('b');
+  });
+  it('картинки: миграция со старого true/false', () => {
+    expect(sanitizeSettings({ images: true as never }).images).toBe('url');
+    expect(sanitizeSettings({ images: false as never }).images).toBe('alt');
+    expect(sanitizeSettings({ images: 'none' }).images).toBe('none');
+    expect(sanitizeSettings({ images: 'x' as never }).images).toBe('alt');
+    expect(DEFAULT_SETTINGS.images).toBe('alt');
   });
   it('тема и generic: допустимые значения', () => {
     expect(sanitizeSettings({ theme: 'neon' as never }).theme).toBe('system');

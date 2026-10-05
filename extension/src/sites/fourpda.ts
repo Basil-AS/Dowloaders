@@ -1,4 +1,4 @@
-import type { Item, ParsedDoc, SiteAdapter } from '../core/types';
+import type { ImageMode, Item, Meta, ParsedDoc, SiteAdapter } from '../core/types';
 import { getText, runPool } from '../core/http';
 import { domToText } from '../core/html';
 import { t, tFor } from '../core/i18n';
@@ -30,7 +30,7 @@ function detectPagination(doc: Document): { perPage: number; totalPages: number 
 }
 
 /** Разбор одной страницы темы. Цитаты / код / спойлеры — в зависимости от настроек. */
-export function parsePosts(doc: Document, o: { quotes: boolean; code: boolean; links: boolean; images: boolean; format: string }, seen: Set<string>): Item[] {
+export function parsePosts(doc: Document, o: { quotes: boolean; code: boolean; links: boolean; images: ImageMode; format: string }, seen: Set<string>): Item[] {
   const out: Item[] = [];
   const mode = o.format === 'md' ? 'md' : 'text';
   doc.querySelectorAll('table.ipbtable[data-post]').forEach(tab => {
@@ -39,18 +39,20 @@ export function parsePosts(doc: Document, o: { quotes: boolean; code: boolean; l
     const body = tab.querySelector('.postcolor');
     if (!body) return;
 
-    const num = tab.querySelector(`a[title="${LINK_TITLE}"]`)?.textContent?.trim() || id || '?';
+    // номер — только цифры: в тексте ссылки он бывает как «#12», так и «Сообщение #12»
+    const num = (tab.querySelector(`a[title="${LINK_TITLE}"]`)?.textContent ?? '').replace(/\D/g, '') || id || '?';
     const author = tab.querySelector('.normalname a')?.textContent?.trim() || tab.querySelector('.normalname')?.textContent?.trim() || 'Гость';
-    const date = (tab.querySelector('td.row2[id^="ph-"][id$="-d2"]')?.textContent ?? '').replace(/\s+Сообщение.*$/, '').replace(/\s+/g, ' ').trim();
+    const dateCell = (tab.querySelector('td.row2[id^="ph-"][id$="-d2"]')?.textContent ?? '').replace(/\s+/g, ' ');
+    const date = dateCell.match(/(?:Сегодня|Вчера|\d{2}\.\d{2}\.\d{2,4}),?\s*\d{1,2}:\d{2}/)?.[0] ?? '';
 
     const temp = body.cloneNode(true) as Element;
     temp.querySelectorAll('script, style, .attach, .signature, .edit, .post-edit-reason, video, iframe').forEach(e => e.remove());
-    if (!o.images) temp.querySelectorAll('img').forEach(e => e.remove());
     temp.querySelectorAll('.post-block.quote, .quote').forEach(q => {
-      if (!o.quotes) return q.remove();
+      // Без цитат остаётся только имя цитируемого: «Цитата(Петя @ 05.10.26, 14:05)» → «Петя».
+      const title = (q.querySelector('.block-title')?.textContent ?? '').trim();
+      const who = title.match(/\(([^@)]+?)\s*@/)?.[1] ?? title.replace(/^Цитата:?\s*/i, '');
       const bq = doc.createElement('blockquote');
-      const title = q.querySelector('.block-title')?.textContent?.trim();
-      bq.textContent = (title ? title + ':\n' : '') + (q.querySelector('.block-body')?.textContent ?? q.textContent ?? '').trim();
+      bq.textContent = o.quotes ? (title ? title + ':\n' : '') + (q.querySelector('.block-body')?.textContent ?? q.textContent ?? '').trim() : who;
       q.replaceWith(bq);
     });
     temp.querySelectorAll('.post-block.code').forEach(c => {
@@ -125,8 +127,7 @@ export const fourpda: SiteAdapter = {
       title,
       url: base,
       meta: [
-        [L('m_pages'), String(totalPages)],
-        [L('m_range'), o.percent >= 100 ? L('range_all') : L('range_pages', { n: o.percent, from: start + 1, to: totalPages })],
+        ...(o.percent >= 100 ? [] : ([[L('m_range'), L('range_pages', { n: o.percent, from: start + 1, to: totalPages })]] as Meta[])),
       ],
       body: '',
       items,

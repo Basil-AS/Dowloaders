@@ -11,10 +11,10 @@ export const DEFAULT_SETTINGS: Settings = {
   minScore: null,
   percent: 100,
   links: true,
-  images: true,
+  images: 'alt',
   code: true,
-  quotes: true,
-  metaHeader: true,
+  quotes: false,
+  metaHeader: false,
   concurrency: 5,
   delayMs: 150,
   filenameTemplate: '{date} - [{site}] - {title}',
@@ -22,6 +22,13 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const MAX_HISTORY = 50;
+
+/** Раньше настройка была true/false: true → адрес, false → подпись. */
+function imageMode(v: unknown): Settings['images'] {
+  if (v === true) return 'url';
+  if (v === false) return 'alt';
+  return v === 'none' || v === 'alt' || v === 'url' ? v : DEFAULT_SETTINGS.images;
+}
 
 /** Приводит значения к допустимым диапазонам (защита от кривого импорта / ручной правки). */
 export function sanitizeSettings(s: Partial<Settings>): Settings {
@@ -37,6 +44,8 @@ export function sanitizeSettings(s: Partial<Settings>): Settings {
     lang: (['auto', 'ru', 'en'] as const).includes(s.lang as never) ? (s.lang as Settings['lang']) : d.lang,
     theme: (['system', 'light', 'dark'] as const).includes(s.theme as never) ? (s.theme as Settings['theme']) : d.theme,
     generic: s.generic ?? d.generic,
+    // раньше было true/false: true → адрес, false → подпись
+    images: imageMode(s.images),
     maxDepth: num(s.maxDepth, d.maxDepth, 0, 50),
     minScore: s.minScore == null || (s.minScore as unknown) === '' ? null : num(s.minScore, 0, -100000, 100000),
     percent: num(s.percent, d.percent, 1, 100),

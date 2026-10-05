@@ -6,11 +6,11 @@ import { buildFilename } from '../../core/filename';
 import { EXT, FORMAT_LABEL, FORMATS } from '../../core/format';
 import { saveBlob } from '../../core/run';
 import { count, type Key } from '../../core/i18n';
-import type { Settings, Theme } from '../../core/types';
+import type { ImageMode, Settings, Theme } from '../../core/types';
 import { Radios } from '../../ui/Radios';
 import { fmtWhen, useConfirm, useHistory, useSettings } from '../../ui/hooks';
 
-type BoolKey = 'comments' | 'links' | 'images' | 'code' | 'quotes' | 'metaHeader' | 'generic' | 'history';
+type BoolKey = 'comments' | 'links' | 'code' | 'quotes' | 'metaHeader' | 'generic' | 'history';
 const TOKENS = ['{date}', '{time}', '{site}', '{title}', '{id}', '{count}'];
 const SITE_ROWS = [['Хабр', 'habr.com'], ['Reddit', 'reddit.com'], ['4PDA', '4pda.to'], ['Discourse', 'ntc.party, meta.discourse.org …']];
 
@@ -112,9 +112,12 @@ export function Options() {
 
         <section id="content">
           <h2>{tr('o_content')}</h2>
+          <p class="muted">{tr('o_econ')}</p>
           {toggle('comments', 'o_comments', 'o_commentsHint')}
           {toggle('links', 'o_links', 'o_linksHint')}
-          {toggle('images', 'o_images', 'o_imagesHint')}
+          <Setting label={tr('o_images')} hint={tr('o_imagesHint')}>
+            <Radios<ImageMode> name="images" value={s.images} onChange={v => set({ images: v })} options={[['none', tr('o_img_none')], ['alt', tr('o_img_alt')], ['url', tr('o_img_url')]]} />
+          </Setting>
           {toggle('code', 'o_code', 'o_codeHint')}
           {toggle('quotes', 'o_quotes', 'o_quotesHint')}
           {toggle('metaHeader', 'o_meta', 'o_metaHint')}

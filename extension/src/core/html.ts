@@ -3,12 +3,29 @@
  * innerText в «неотрисованных» документах (DOMParser, клоны) не ставит переносы между блоками,
  * поэтому дерево обходим сами.
  */
+import type { ImageMode } from './types';
+
 export interface TextOpts {
   mode: 'text' | 'md';
   links: boolean;
-  images: boolean;
+  images: ImageMode;
 }
-export const DEFAULT_TEXT_OPTS: TextOpts = { mode: 'text', links: true, images: true };
+export const DEFAULT_TEXT_OPTS: TextOpts = { mode: 'text', links: true, images: 'url' };
+
+const TRACKING = /^(utm_[a-z]+|fbclid|gclid|yclid|mc_cid|mc_eid|ref|ref_src|_openstat)$/i;
+
+/** Убирает трекинговые параметры (utm_*, fbclid…) — они длинные и ничего не значат. */
+export function cleanUrl(href: string): string {
+  if (!/^https?:\/\//i.test(href) || !/[?&]/.test(href)) return href;
+  try {
+    const u = new URL(href);
+    for (const k of [...u.searchParams.keys()]) if (TRACKING.test(k)) u.searchParams.delete(k);
+    return u.href.replace(/\?$/, '');
+  } catch {
+    return href;
+  }
+}
+const sameUrl = (text: string, href: string) => text.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '') === href.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
 
 const BLOCK = new Set(['DIV', 'P', 'UL', 'OL', 'TABLE', 'TR', 'FIGURE', 'FIGCAPTION', 'SECTION', 'ARTICLE', 'DL']);
 const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
@@ -28,10 +45,12 @@ function walk(n: Node, o: TextOpts, ctx: { list: ('ul' | 'ol')[]; ol: number[] }
     case 'HR':
       return '\n\n---\n\n';
     case 'IMG': {
-      if (el.classList.contains('emoji')) return el.getAttribute('alt') ?? '';
+      const alt = (el.getAttribute('alt') ?? '').trim();
+      if (el.classList.contains('emoji')) return alt;
+      if (o.images === 'none') return '';
       const src = el.getAttribute('data-src') || el.getAttribute('src') || '';
-      if (!o.images || !src || src.startsWith('data:')) return '';
-      return md ? `![${el.getAttribute('alt') ?? ''}](${src})` : `[img: ${src}]`;
+      if (o.images === 'url' && src && !src.startsWith('data:')) return md ? `![${alt}](${src})` : `[img: ${src}]`;
+      return alt.length < 3 ? '' : `[img: ${alt}]`; // смайлы и декор без подписи: пользы нет, токены тратятся
     }
     case 'PRE': {
       const code = (el.textContent ?? '').replace(/\n$/, '');
@@ -42,9 +61,9 @@ function walk(n: Node, o: TextOpts, ctx: { list: ('ul' | 'ol')[]; ol: number[] }
       return md ? `\`${el.textContent ?? ''}\`` : (el.textContent ?? '');
     case 'A': {
       const text = inner().trim();
-      const href = el.getAttribute('href') ?? '';
+      const href = cleanUrl(el.getAttribute('href') ?? '');
       if (!o.links || !href || href.startsWith('#') || href.startsWith('javascript:')) return text;
-      if (!text || text === href) return md ? `<${href}>` : href;
+      if (!text || sameUrl(text, href)) return md ? `<${href}>` : href;
       return md ? `[${text}](${href})` : `${text} (${href})`;
     }
     case 'B':
