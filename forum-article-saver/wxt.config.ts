@@ -2,6 +2,7 @@ import { defineConfig } from 'wxt';
 import preact from '@preact/preset-vite';
 
 export default defineConfig({
+  zip: { excludeSources: ['releases/**', 'PLAN-*.md'] },
   srcDir: 'src',
   outDir: 'dist',
   vite: () => ({ plugins: [preact()] }),

@@ -484,7 +484,7 @@ describe('исправления по ревью', () => {
   });
 
   it('обрезание списка по числу страниц помечается', async () => {
-    const f = (async (u: string) => new Response(JSON.stringify([1]), { headers: { link: `<${u}&x=1>; rel="next"` } })) as never;
+    const f = (async (u: string) => new Response(JSON.stringify([1]), { headers: { 'content-type': 'application/json', link: `<${u}&x=1>; rel="next"` } })) as never;
     const api = new GitHubApi(f);
     const out = await api.paginate('/x?per_page=1', { maxPages: 3 });
     expect(out).toHaveLength(3);

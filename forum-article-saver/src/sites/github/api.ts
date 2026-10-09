@@ -103,7 +103,8 @@ export class GitHubApi {
       }
       out.push(...pick(p.data));
       last = p.last ?? last;
-      onPage?.(++n, last ?? n);
+      n++;
+      onPage?.(n, last ?? n);
       next = p.next;
     }
     if (next && n >= maxPages) this.truncated = true;
