@@ -7,7 +7,24 @@ export type Msg =
   | { type: 'fas/run'; action: Action; opts: ExtractOptions; template: string; metaHeader: boolean; fallback: boolean; theme: Theme }
   | { type: 'fas/progress'; progress: Progress }
   /** Запрос к API GitHub через фон: хост-права и токен есть только у фона. */
+  /** Перед каждым запросом к сайту: общая очередь и общий бан для всех вкладок (clear — пользователь сам продолжил). */
+  | { type: 'fas/gate'; host: string; clear?: boolean }
+  | { type: 'fas/ban'; host: string; status: number; retryAfterMs: number | null }
+  /** Состояние сохранения во вкладке: нужно, чтобы закрытый и снова открытый popup не терял паузу. */
+  | { type: 'fas/phase'; phase: TabPhase }
+  | { type: 'fas/state'; tabId: number }
   | { type: 'fas/fetch'; url: string; method?: string; headers?: Record<string, string>; body?: string };
+
+export interface GateReply {
+  waitMs: number;
+  ban: { until: number; status: number } | null;
+}
+
+export type TabPhase =
+  | { kind: 'run' }
+  | { kind: 'paused'; action: Action; done: number; total: number; skippable: boolean; text: string }
+  | { kind: 'done' }
+  | { kind: 'failed'; text: string };
 
 export interface BgFetchResult {
   status: number;

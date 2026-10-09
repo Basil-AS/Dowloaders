@@ -44,6 +44,8 @@ const ru = {
   e_nothing: 'Ничего не найдено. Возможно, нужно войти в аккаунт или сайт включил защиту от ботов.',
   e_no_post: 'Пост не найден на странице. Откройте его целиком и повторите.',
   e_unsupported: 'Эта страница не поддерживается',
+  e_busy: 'В этой вкладке уже идёт сохранение',
+  w_ban_shared: 'Другая вкладка получила ограничение от этого сайта. Подождите или смените IP и нажмите «Продолжить».',
   e_no_article: 'На странице не нашлось основного текста',
   // popup
   p_unsupported: 'Эту страницу сохранить нельзя',
@@ -261,6 +263,8 @@ const en: Record<Key, string> = {
   e_nothing: 'Nothing found. You may need to sign in, or the site is blocking automated requests.',
   e_no_post: 'No post found on the page. Open the post itself and try again.',
   e_unsupported: 'This page is not supported',
+  e_busy: 'A save is already running in this tab',
+  w_ban_shared: 'Another tab was limited by this site. Wait or change your IP, then press “Continue”.',
   e_no_article: 'No main text found on this page',
   p_unsupported: 'This page can’t be saved',
   p_unsupportedBody: 'Open an article or a discussion on one of these sites:',

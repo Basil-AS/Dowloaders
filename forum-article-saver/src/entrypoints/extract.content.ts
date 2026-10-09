@@ -6,6 +6,7 @@ import { t } from '../core/i18n';
 import type { DetectResult, Msg, RunResult } from '../core/messages';
 import { TtlCache } from '../core/cache';
 import { PausedError, RateLimitError } from '../core/http';
+import type { GateReply, TabPhase } from '../core/messages';
 import type { BgFetchResult } from '../core/messages';
 import type { Ctx, SiteAdapter } from '../core/types';
 
@@ -28,6 +29,36 @@ const bgFetch: typeof fetch = async (input, init) => {
   return new Response(r.status === 204 || r.status === 304 ? null : r.body, { status: r.status, headers: r.headers });
 };
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const phase = (p: TabPhase) => void browser.runtime.sendMessage({ type: 'fas/phase', phase: p } satisfies Msg).catch(() => {});
+
+/**
+ * fetch с общими для всех вкладок правилами: очередь по хосту и общий бан живут в фоне.
+ * Своих (same-origin) запросов касается только он; GitHub идёт через bgFetch и свои лимиты.
+ */
+const makeGated = (clear: boolean): typeof fetch => {
+  let first = clear;
+  return async (input, init) => {
+    const url = new URL(String(input), location.href);
+    const host = url.host;
+    let g: GateReply | undefined;
+    try {
+      g = (await browser.runtime.sendMessage({ type: 'fas/gate', host, clear: first || undefined } satisfies Msg)) as GateReply | undefined;
+    } catch {
+      /* фон недоступен — работаем без общих правил */
+    }
+    first = false;
+    if (g?.ban) throw new RateLimitError(g.ban.status, Math.max(0, g.ban.until - Date.now()), g.ban.until);
+    if (g?.waitMs) await sleep(g.waitMs);
+    const res = await globalThis.fetch(input, init);
+    if (res.status === 429) {
+      const ra = Number(res.headers.get('retry-after'));
+      browser.runtime.sendMessage({ type: 'fas/ban', host, status: 429, retryAfterMs: ra > 0 ? ra * 1000 : null } satisfies Msg).catch(() => {});
+    }
+    return res;
+  };
+};
+
 /** Runtime-скрипт: внедряется по требованию (activeTab), поэтому расширению не нужен доступ ко всем сайтам. */
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -37,7 +68,8 @@ export default defineContentScript({
     const g = globalThis as unknown as Record<string, ((...a: never[]) => unknown) | undefined>;
     if (g[HANDLER]) browser.runtime.onMessage.removeListener(g[HANDLER] as never);
 
-    const ctx = (): Ctx => ({ url: new URL(location.href), doc: document, fetch: globalThis.fetch.bind(globalThis), bgFetch, cache });
+    let busy = false;
+    const ctx = (clear = false): Ctx => ({ url: new URL(location.href), doc: document, fetch: makeGated(clear), bgFetch, cache });
 
     const onMessage = (raw: unknown, _sender: unknown, sendResponse: (r: unknown) => void) => {
       const msg = raw as Msg;
@@ -55,8 +87,14 @@ export default defineContentScript({
       }
       if (msg.type !== 'fas/run') return;
 
+      if (busy) {
+        sendResponse({ ok: false, error: t(msg.opts.lang, 'e_busy') } satisfies RunResult);
+        return;
+      }
+      busy = true;
+      phase({ kind: 'run' });
       (async (): Promise<RunResult> => {
-        const c = ctx();
+        const c = ctx(!!(msg.opts.resume || msg.opts.skip));
         const adapter = pickAdapter(ADAPTERS, c, { fallback: msg.fallback });
         if (!adapter) return { ok: false, unsupported: true, error: t(msg.opts.lang, 'e_unsupported') };
         const toast = createToast({ site: label(adapter, c), lang: msg.opts.lang, theme: msg.theme });
@@ -76,6 +114,7 @@ export default defineContentScript({
             msg.template,
             msg.metaHeader,
           );
+          phase({ kind: 'done' });
           if (msg.action === 'download') saveBlob(out.text, out.filename, msg.opts.format);
           toast.done(out.filename);
           return {
@@ -92,18 +131,23 @@ export default defineContentScript({
         } catch (e) {
           if (e instanceof PausedError) {
             toast.pause(e.message);
+            phase({ kind: 'paused', action: msg.action, done: e.done, total: e.total, skippable: e.skippable, text: e.message });
             return { ok: false, error: e.message, paused: { done: e.done, total: e.total, skippable: e.skippable } };
           }
           if (e instanceof RateLimitError) {
             const error = t(msg.opts.lang, 'w_paused', { site: label(adapter, c), status: e.status, done: 0, total: 0 });
             toast.pause(error);
+            phase({ kind: 'paused', action: msg.action, done: 0, total: 0, skippable: false, text: error });
             return { ok: false, error, paused: { done: 0, total: 0 } };
           }
           const error = (e as Error).message ?? String(e);
           toast.fail(error);
+          phase({ kind: 'failed', text: error });
           return { ok: false, error };
         }
-      })().then(sendResponse);
+      })()
+        .finally(() => (busy = false))
+        .then(sendResponse);
       return true; // ответ асинхронный
     };
     g[HANDLER] = onMessage as never;

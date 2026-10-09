@@ -72,6 +72,8 @@ export interface ExtractOptions {
   partial?: boolean;
   /** После паузы: пропустить страницы, на которых сайт ограничил запросы, и качать остальные. */
   skip?: boolean;
+  /** Пользователь сам нажал «Продолжить»: общий бан по сайту снимается. */
+  resume?: boolean;
   github: GithubOptions;
 }
 
