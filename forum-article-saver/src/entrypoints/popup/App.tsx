@@ -36,7 +36,7 @@ export function App() {
   const [mode, setMode] = useState<string | undefined>();
   const [hasToken, setHasToken] = useState(true);
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' });
-  const [paused, setPaused] = useState<{ action: Action; done: number } | null>(null);
+  const [paused, setPaused] = useState<{ action: Action; done: number; skippable: boolean } | null>(null);
   const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
 
   // Вкладку ищем сразу, параллельно с загрузкой настроек; определение страницы ждёт только флаг generic.
@@ -75,7 +75,7 @@ export function App() {
   const finish = async (res: RunResult, action: Action) => {
     setProg(null);
     if (res.paused) {
-      setPaused({ action, done: res.paused.done });
+      setPaused({ action, done: res.paused.done, skippable: !!res.paused.skippable });
       return setStatus({ kind: 'paused', text: res.error ?? '' });
     }
     setPaused(null);
@@ -236,6 +236,7 @@ export function App() {
             <p class="faint small">{tr('p_pausedHint')}</p>
             <div class="btns">
               <button class="btn primary" onClick={() => go(paused.action)}>{tr('p_continue')}</button>
+              {paused.skippable && <button class="btn" onClick={() => go(paused.action, { skip: true })}>{tr('p_skip')}</button>}
               {paused.done > 0 && (
                 <button class="btn" onClick={() => go(paused.action, { partial: true })}>{tr('p_savePartial')}</button>
               )}

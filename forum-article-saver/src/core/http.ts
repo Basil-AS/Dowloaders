@@ -24,7 +24,7 @@ export class RateLimitError extends Error {
 
 /** Адаптер остановился на паузе: что-то уже скачано и лежит в кэше, продолжить можно по кнопке. */
 export class PausedError extends Error {
-  constructor(message: string, public done: number, public total: number, public retryAt: number | null = null) {
+  constructor(message: string, public done: number, public total: number, public retryAt: number | null = null, public skippable = false) {
     super(message);
     this.name = 'PausedError';
   }

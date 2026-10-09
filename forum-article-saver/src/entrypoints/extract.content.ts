@@ -92,7 +92,7 @@ export default defineContentScript({
         } catch (e) {
           if (e instanceof PausedError) {
             toast.pause(e.message);
-            return { ok: false, error: e.message, paused: { done: e.done, total: e.total } };
+            return { ok: false, error: e.message, paused: { done: e.done, total: e.total, skippable: e.skippable } };
           }
           if (e instanceof RateLimitError) {
             const error = t(msg.opts.lang, 'w_paused', { site: label(adapter, c), status: e.status, done: 0, total: 0 });

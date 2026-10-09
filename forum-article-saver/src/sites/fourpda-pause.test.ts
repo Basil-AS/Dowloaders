@@ -40,14 +40,15 @@ describe('4PDA: ограничение запросов и докачка', () =
     return settled as Promise<{ v?: any; e?: unknown }>;
   };
 
-  it('429: пул останавливается, одна проба после паузы сайта, затем пауза с прогрессом', async () => {
+  it('429: пул останавливается и сразу пауза с прогрессом, без автоматических проб', async () => {
     const { st, f } = server({ okLimit: 2 });
     const r = await run(fourpda.extract(ctxWith(f), o, noop));
     expect(r.e).toBeInstanceOf(PausedError);
     const e = r.e as PausedError;
     expect([e.done, e.total]).toEqual([2, 6]);
-    // 2 успешных + первый 429 + одна проба после ожидания: никакого шквала запросов
-    expect(st.calls).toBe(4);
+    // 2 успешных + первый 429: дальше ни одного запроса, пока пользователь не нажмёт «Продолжить»
+    expect(st.calls).toBe(3);
+    expect(e.skippable).toBe(true);
     expect(e.message).toContain('4PDA');
     expect(e.message).toContain('429');
   });
@@ -62,6 +63,27 @@ describe('4PDA: ограничение запросов и докачка', () =
     expect(r.v.items.map((i: any) => i.id)).toEqual(['1', '2', '3', '4', '5', '6']);
     expect(r.v.warnings).toEqual([]);
     expect(cache.has('4pda:1:0')).toBe(false); // кэш очищен после успеха
+  });
+
+  it('«Пропустить»: заблокированная страница исключается, остальные докачиваются, в предупреждении её номер', async () => {
+    const cache = new TtlCache();
+    await run(fourpda.extract(ctxWith(server({ okLimit: 2 }).f, cache), o, noop)); // страницы 0,1 есть, страница 2 упёрлась в лимит
+    const b = server({ limited: false });
+    const r = await run(fourpda.extract(ctxWith(b.f, cache), { ...o, skip: true }, noop));
+    expect(b.st.urls.sort()).toEqual([3, 4, 5]);
+    expect(r.v.items.map((i: any) => i.id)).toEqual(['1', '2', '4', '5', '6']);
+    expect(r.v.warnings.join(' ')).toContain('Пропущено страниц: 1 (3)');
+  });
+
+  it('«Пропустить» запоминается: следующая пауза не возвращает пропущенную страницу', async () => {
+    const cache = new TtlCache();
+    await run(fourpda.extract(ctxWith(server({ okLimit: 2 }).f, cache), o, noop));
+    const again = await run(fourpda.extract(ctxWith(server({ okLimit: 1 }).f, cache), { ...o, skip: true }, noop)); // снова лимит, уже на странице 5
+    const e = again.e as PausedError;
+    expect(e).toBeInstanceOf(PausedError);
+    expect(e.total).toBe(5); // 6 минус пропущенная
+    const fin = await run(fourpda.extract(ctxWith(server({ limited: false }).f, cache), { ...o, skip: true }, noop));
+    expect(fin.v.warnings.join(' ')).toContain('Пропущено страниц: 2 (3, 5)');
   });
 
   it('«Сохранить, что есть»: документ из скачанного, без запросов', async () => {
@@ -100,7 +122,9 @@ describe('4PDA: ограничение запросов и докачка', () =
       if (page === 3 && n++ === 0) return new Response('', { status: 429 });
       return new Response(pageHtml(page + 1));
     }) as unknown as typeof fetch;
-    const r = await run(fourpda.extract(ctxWith(f), o, noop));
+    const cache = new TtlCache();
+    expect((await run(fourpda.extract(ctxWith(f, cache), o, noop))).e).toBeInstanceOf(PausedError);
+    const r = await run(fourpda.extract(ctxWith(f, cache), o, noop)); // ручное «Продолжить»
     expect(r.v.warnings).toHaveLength(1);
     expect(r.v.warnings[0]).toMatch(/Не загрузилось страниц: 1 \(стр\. 2:/);
   });

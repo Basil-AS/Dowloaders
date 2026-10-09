@@ -168,12 +168,13 @@ await check('без токена: одно обсуждение читается
   st.pdaOk = 0;
   st.pdaLimitAfter = 2;
   const { page, pop } = await openPopup(ctx, 'https://4pda.to/forum/index.php?showtopic=1');
-  await check('4PDA 429: пул остановлен, одна проба, пауза с «Продолжить» (≈15 с)', async () => {
+  await check('4PDA 429: пул остановлен сразу, без проб, пауза с «Продолжить» и «Пропустить»', async () => {
     await saveBtn(pop).click();
     await statusWarn(pop);
     assert.match(await pop.textContent('.status'), /4PDA ограничил запросы \(HTTP 429\)\. Скачано 2 из 6/);
-    // 2 успешных + 429 + одна проба; без шквала запросов на оставшиеся страницы
-    assert.ok(st.pdaCalls.length <= 4 + 2, `запросов: ${st.pdaCalls.length}`);
+    // 2 успешных + 429; дальше тишина до ручного «Продолжить»
+    assert.ok(st.pdaCalls.length <= 3 + 2, `запросов: ${st.pdaCalls.length}`);
+    assert.ok(await pop.getByRole('button', { name: 'Пропустить заблокированное' }).isVisible());
     if (shots) await pop.screenshot({ path: `${shots}/pda-paused.png`, fullPage: true });
   });
   await check('4PDA: после снятия ограничения «Продолжить» скачивает только недостающие страницы', async () => {
@@ -184,6 +185,20 @@ await check('без токена: одно обсуждение читается
     const text = fs.readFileSync(await (await dl).path(), 'utf8');
     assert.equal((text.match(/^\d+ user\d+/gm) || []).length, 6);
     assert.deepEqual([...new Set(st.pdaCalls)].sort(), [2, 3, 4, 5]);
+  });
+  await check('4PDA: «Пропустить» исключает заблокированную страницу и скачивает остальные', async () => {
+    resetCounters();
+    st.pdaOk = 0;
+    st.pdaLimitAfter = 2;
+    await saveBtn(pop).click();
+    await statusWarn(pop);
+    st.pdaLimitAfter = Infinity;
+    st.pdaCalls.length = 0;
+    const dl = page.waitForEvent('download', { timeout: 30000 });
+    await pop.getByRole('button', { name: 'Пропустить заблокированное' }).click();
+    const text = fs.readFileSync(await (await dl).path(), 'utf8');
+    assert.equal((text.match(/^\d+ user\d+/gm) || []).length, 5);
+    assert.match(text, /Пропущено страниц: 1 \(3\)/);
   });
 }
 

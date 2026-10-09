@@ -1,5 +1,5 @@
 import type { ImageMode, Item, Meta, ParsedDoc, SiteAdapter } from '../core/types';
-import { getText, PausedError, RateLimitError, runPool, sleep } from '../core/http';
+import { getText, PausedError, RateLimitError, runPool } from '../core/http';
 import { domToText } from '../core/html';
 import { tFor } from '../core/i18n';
 
@@ -100,11 +100,21 @@ export const xenforo: SiteAdapter = {
     const start = totalPages - count;
     const pages = Array.from({ length: count }, (_, i) => start + i + 1); // номера страниц с 1
     const key = (p: number) => `xf:${url.host}:${threadId}:${p}`;
-    const missing = () => pages.filter(p => !cache.has(key(p)));
-    const done = () => count - missing().length;
+    // «Пропустить»: страницы, на которых сайт ограничил запросы, исключаются из этого и следующих запусков
+    const skipKey = `xf:${url.host}:${threadId}:skip`;
+    const hitKey = `xf:${url.host}:${threadId}:hit`;
+    const skipped = new Set<number>(cache.get<number[]>(skipKey) ?? []);
+    if (o.skip) for (const p of cache.get<number[]>(hitKey) ?? []) skipped.add(p);
+    cache.set(skipKey, [...skipped]);
+    const hit = new Set<number>();
+    cache.set(hitKey, []);
+
+    const missing = () => pages.filter(p => !cache.has(key(p)) && !skipped.has(p));
+    const done = () => pages.filter(p => cache.has(key(p))).length;
+    const total = () => count - pages.filter(p => skipped.has(p)).length;
     const errors = new Map<number, string>();
 
-    let workers = Math.min(o.concurrency, SAFE_CONCURRENCY);
+    const workers = Math.min(o.concurrency, SAFE_CONCURRENCY);
     const delay = Math.max(o.delayMs, SAFE_DELAY_MS);
     const here = /\/post-\d+|\/posts\//.test(url.pathname) ? 0 : Number(url.pathname.match(/\/page-(\d+)/)?.[1] ?? 1); // 0: ссылка на сообщение, страница неизвестна
 
@@ -116,33 +126,28 @@ export const xenforo: SiteAdapter = {
         errors.delete(p);
       } catch (e) {
         if (e instanceof RateLimitError && e.status === 403 && done() === 0) throw new Error(L('e_denied', { site: url.hostname, status: 403 }));
-        if (e instanceof RateLimitError) throw e;
+        if (e instanceof RateLimitError) {
+          hit.add(p);
+          cache.set(hitKey, [...hit]);
+          throw e;
+        }
         errors.set(p, (e as Error).message);
       }
-      progress({ done: done(), total: count });
+      progress({ done: done(), total: total() });
     };
 
     // страница, открытая сейчас, уже есть — лишний запрос не нужен
     if (pages.includes(here)) cache.set(key(here), doc.documentElement.outerHTML);
 
     if (!o.partial) {
-      let probed = false;
-      progress({ done: done(), total: count });
+      progress({ done: done(), total: total() });
       for (;;) {
         try {
           await runPool(missing(), workers, fetchPage, delay, e => e instanceof RateLimitError);
           break;
         } catch (e) {
           if (!(e instanceof RateLimitError)) throw e;
-          if (!probed) {
-            probed = true;
-            workers = 1;
-            const wait = Math.min(Math.max(e.retryAfterMs ?? 20_000, 10_000), 60_000);
-            progress({ done: done(), total: count, waitMs: wait });
-            await sleep(wait);
-            continue;
-          }
-          throw new PausedError(L('w_paused', { site: url.hostname, status: e.status, done: done(), total: count }), done(), count);
+          throw new PausedError(L('w_paused', { site: url.hostname, status: e.status, done: done(), total: total() }), done(), total(), null, true);
         }
       }
     }
@@ -156,7 +161,8 @@ export const xenforo: SiteAdapter = {
     const warnings: string[] = [];
     const failed = pages.filter(p => errors.has(p) && !cache.has(key(p)));
     if (failed.length) warnings.push(`${L('w_pages_failed', { n: failed.length })} (${failed.slice(0, 5).map(p => `p.${p}: ${errors.get(p)}`).join('; ')})`);
-    if (o.partial && done() < count) warnings.push(L('w_partial', { done: done(), total: count }));
+    if (skipped.size) warnings.push(L('w_skipped_pages', { n: skipped.size, list: [...skipped].map(p => p).join(', ') }));
+    if (o.partial && done() < total()) warnings.push(L('w_partial', { done: done(), total: total() }));
     if (!o.partial) cache.deletePrefix(`xf:${url.host}:${threadId}:`);
     return {
       id: threadId,

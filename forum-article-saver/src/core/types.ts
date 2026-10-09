@@ -70,6 +70,8 @@ export interface ExtractOptions {
   mode?: string;
   /** Не докачивать: собрать документ из уже скачанного (после паузы). */
   partial?: boolean;
+  /** После паузы: пропустить страницы, на которых сайт ограничил запросы, и качать остальные. */
+  skip?: boolean;
   github: GithubOptions;
 }
 

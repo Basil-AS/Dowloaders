@@ -53,7 +53,15 @@ export const discourse: SiteAdapter = {
     const ck = (id: number) => `disc:${url.host}:${id}`;
     for (const p of topic.post_stream?.posts ?? []) byId.set(p.id, p);
     for (const id of wanted) if (!byId.has(id) && cache.has(ck(id))) byId.set(id, cache.get(ck(id)));
-    const missing = wanted.filter(i => !byId.has(i));
+    // «Пропустить»: посты из пачек, на которых сайт ограничил запросы, исключаются из этого и следующих запусков
+    const skipKey = `disc:${url.host}:${id}:skip`;
+    const hitKey = `disc:${url.host}:${id}:hit`;
+    const skipped = new Set<number>(cache.get<number[]>(skipKey) ?? []);
+    if (o.skip) for (const i of cache.get<number[]>(hitKey) ?? []) skipped.add(i);
+    cache.set(skipKey, [...skipped]);
+    const hit = new Set<number>();
+    cache.set(hitKey, []);
+    const missing = wanted.filter(i => !byId.has(i) && !skipped.has(i));
     const chunks: number[][] = [];
     for (let i = 0; i < missing.length; i += 20) chunks.push(missing.slice(i, i + 20));
 
@@ -72,7 +80,11 @@ export const discourse: SiteAdapter = {
                 cache.set(ck(p.id), p);
               }
             } catch (e) {
-              if (e instanceof RateLimitError) throw e;
+              if (e instanceof RateLimitError) {
+                for (const i of ch) hit.add(i);
+                cache.set(hitKey, [...hit]);
+                throw e;
+              }
               /* недостающие посты учтём ниже одним предупреждением */
             }
             progress({ done: ++done, total: chunks.length });
@@ -83,7 +95,8 @@ export const discourse: SiteAdapter = {
       } catch (e) {
         if (!(e instanceof RateLimitError)) throw e;
         const have = wanted.filter(i => byId.has(i)).length;
-        throw new PausedError(L('w_paused', { site: url.hostname, status: e.status, done: have, total: wanted.length }), have, wanted.length);
+        const total = wanted.length - skipped.size;
+        throw new PausedError(L('w_paused', { site: url.hostname, status: e.status, done: have, total }), have, total, null, true);
       }
     }
 
@@ -102,8 +115,13 @@ export const discourse: SiteAdapter = {
         text: p.hidden ? L('w_hidden_post') : cookedToText(p.cooked, o, doc),
       });
     }
-    if (items.length < wanted.length) warnings.push(o.partial ? L('w_partial', { done: items.length, total: wanted.length }) : L('w_posts_failed', { n: wanted.length - items.length }));
-    if (!o.partial) for (const id of wanted) cache.delete(ck(id));
+    if (skipped.size) warnings.push(L('w_skipped_pages', { n: skipped.size, list: [...skipped].map(i => byId.get(i)?.post_number ?? i).join(', ') }));
+    if (items.length < wanted.length - skipped.size) warnings.push(o.partial ? L('w_partial', { done: items.length, total: wanted.length - skipped.size }) : L('w_posts_failed', { n: wanted.length - skipped.size - items.length }));
+    if (!o.partial) {
+      for (const i of wanted) cache.delete(ck(i));
+      cache.delete(skipKey);
+      cache.delete(hitKey);
+    }
 
     const tags = (topic.tags ?? []).map((t: any) => (typeof t === 'string' ? t : t.name)).join(', ');
     const meta: Meta[] = [

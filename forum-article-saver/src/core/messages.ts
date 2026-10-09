@@ -34,7 +34,7 @@ export interface RunResult {
   /** Страница не поддерживается — не ошибка загрузки (нужно для «Все вкладки»). */
   unsupported?: boolean;
   /** Сайт ограничил запросы: скачанное сохранено, продолжить можно позже. */
-  paused?: { done: number; total: number };
+  paused?: { done: number; total: number; skippable?: boolean };
   site?: string;
   title?: string;
   url?: string;

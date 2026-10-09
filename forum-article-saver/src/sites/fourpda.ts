@@ -1,5 +1,5 @@
 import type { ImageMode, Item, Meta, ParsedDoc, SiteAdapter } from '../core/types';
-import { getText, PausedError, RateLimitError, runPool, sleep } from '../core/http';
+import { getText, PausedError, RateLimitError, runPool } from '../core/http';
 import { domToText } from '../core/html';
 import { t, tFor } from '../core/i18n';
 
@@ -98,12 +98,22 @@ export const fourpda: SiteAdapter = {
     const start = totalPages - count;
     const pages = Array.from({ length: count }, (_, i) => start + i);
     const key = (p: number) => `4pda:${topicId}:${p}`;
-    const missing = () => pages.filter(p => !cache.has(key(p)));
-    const done = () => count - missing().length;
+    // «Пропустить»: страницы, на которых сайт ограничил запросы, исключаются из этого и следующих запусков
+    const skipKey = `4pda:${topicId}:skip`;
+    const hitKey = `4pda:${topicId}:hit`;
+    const skipped = new Set<number>(cache.get<number[]>(skipKey) ?? []);
+    if (o.skip) for (const p of cache.get<number[]>(hitKey) ?? []) skipped.add(p);
+    cache.set(skipKey, [...skipped]);
+    const hit = new Set<number>();
+    cache.set(hitKey, []);
+
+    const missing = () => pages.filter(p => !cache.has(key(p)) && !skipped.has(p));
+    const done = () => pages.filter(p => cache.has(key(p))).length;
+    const total = () => count - pages.filter(p => skipped.has(p)).length;
     const errors = new Map<number, string>(); // страница → причина; успешная повторная загрузка убирает запись
 
     // 4PDA быстро отвечает 429 и может надолго заблокировать IP, поэтому темп заведомо мягкий.
-    let workers = Math.min(o.concurrency, SAFE_CONCURRENCY);
+    const workers = Math.min(o.concurrency, SAFE_CONCURRENCY);
     const delay = Math.max(o.delayMs, SAFE_DELAY_MS);
 
     const fetchPage = async (page: number) => {
@@ -115,31 +125,25 @@ export const fourpda: SiteAdapter = {
       } catch (e) {
         // 403 на самом первом запросе — это закрытая тема, а не бан: без смысла ждать и просить «продолжить»
         if (e instanceof RateLimitError && e.status === 403 && done() === 0) throw new Error(L('e_denied', { site: '4PDA', status: 403 }));
-        if (e instanceof RateLimitError) throw e;
+        if (e instanceof RateLimitError) {
+          hit.add(page);
+          cache.set(hitKey, [...hit]);
+          throw e;
+        }
         errors.set(page, (e as Error).message);
       }
-      progress({ done: done(), total: count });
+      progress({ done: done(), total: total() });
     };
 
     if (!o.partial) {
-      let probed = false;
-      progress({ done: done(), total: count });
+      progress({ done: done(), total: total() });
       for (;;) {
         try {
           await runPool(missing(), workers, fetchPage, delay, e => e instanceof RateLimitError);
           break;
         } catch (e) {
           if (!(e instanceof RateLimitError)) throw e;
-          if (!probed) {
-            // одна осторожная проба после паузы, строго одним запросом; повторное ограничение — сразу пауза для пользователя
-            probed = true;
-            workers = 1;
-            const wait = Math.min(Math.max(e.retryAfterMs ?? 20_000, 10_000), 60_000);
-            progress({ done: done(), total: count, waitMs: wait });
-            await sleep(wait);
-            continue;
-          }
-          throw new PausedError(L('w_paused', { site: '4PDA', status: e.status, done: done(), total: count }), done(), count);
+          throw new PausedError(L('w_paused', { site: '4PDA', status: e.status, done: done(), total: total() }), done(), total(), null, true);
         }
       }
     }
@@ -153,7 +157,8 @@ export const fourpda: SiteAdapter = {
     const warnings: string[] = [];
     const failed = pages.filter(p => errors.has(p) && !cache.has(key(p)));
     if (failed.length) warnings.push(`${L('w_pages_failed', { n: failed.length })} (${failed.slice(0, 5).map(p => `стр. ${p + 1}: ${errors.get(p)}`).join('; ')})`);
-    if (o.partial && done() < count) warnings.push(L('w_partial', { done: done(), total: count }));
+    if (skipped.size) warnings.push(L('w_skipped_pages', { n: skipped.size, list: [...skipped].map(p => p + 1).join(', ') }));
+    if (o.partial && done() < total()) warnings.push(L('w_partial', { done: done(), total: total() }));
     if (!o.partial) cache.deletePrefix(`4pda:${topicId}:`); // после «сохранить, что есть» скачанное остаётся для докачки
     return {
       id: topicId,
