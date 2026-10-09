@@ -90,3 +90,32 @@ describe('XenForo (XDA)', () => {
     expect(d.items.length).toBeGreaterThan(0);
   });
 });
+
+describe('XenForo: ручное продолжение и пропуск', () => {
+  afterEach(() => vi.useRealTimers());
+  const U2 = U;
+  it('429 → сразу пауза, «Пропустить» исключает заблокированную страницу', async () => {
+    vi.useFakeTimers();
+    const cache = new TtlCache();
+    const calls: string[] = [];
+    let limited = true;
+    const f = (async (u: string) => {
+      calls.push(u);
+      const n = Number(u.match(/page-(\d+)/)?.[1] ?? 1);
+      if (limited && n === 2) return new Response('', { status: 429 });
+      return new Response(page(post(n * 10, 'u', `т${n}`), 3));
+    }) as never;
+    const opts = { ...o, delayMs: 0, concurrency: 1 };
+    const run = (p: Promise<unknown>) => { const s = p.then(v => ({ v }), e => ({ e })); return vi.advanceTimersByTimeAsync(300_000).then(() => s) as Promise<{ v?: any; e?: any }>; };
+    const first = await run(xenforo.extract(ctx(U2 + 'page-3', page(post(30, 'u', 'x')), f, cache), opts, noop));
+    expect(first.e).toBeInstanceOf(PausedError);
+    expect(first.e.skippable).toBe(true);
+    expect(calls).toEqual([U2, U2 + 'page-2']); // после 429 ни одной пробы
+    limited = false;
+    calls.length = 0;
+    const r = await run(xenforo.extract(ctx(U2 + 'page-3', page(post(30, 'u', 'x')), f, cache), { ...opts, skip: true }, noop));
+    expect(calls).toEqual([]); // 1 и 3 уже есть, 2 пропущена
+    expect(r.v.items.map((i: any) => i.id)).toEqual(['10', '30']);
+    expect(r.v.warnings.join(' ')).toContain('Пропущено страниц: 1 (2)');
+  });
+});
