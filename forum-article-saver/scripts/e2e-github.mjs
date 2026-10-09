@@ -197,8 +197,34 @@ await check('без токена: одно обсуждение читается
     const dl = page.waitForEvent('download', { timeout: 30000 });
     await pop.getByRole('button', { name: 'Пропустить заблокированное' }).click();
     const text = fs.readFileSync(await (await dl).path(), 'utf8');
-    assert.equal((text.match(/^\d+ user\d+/gm) || []).length, 5);
-    assert.match(text, /Пропущено страниц: 1 \(3\)/);
+    // страница, на которой пришёл 429, и ждавшие в общей очереди (бан общий) исключены; остальные скачаны
+    const n = (text.match(/^\d+ user\d+/gm) || []).length;
+    assert.ok(n >= 3 && n <= 5, `постов: ${n}`);
+    assert.match(text, /Пропущено страниц: [12] \(3(, 4)?\)/);
+  });
+}
+
+// ───── 8. Две вкладки одного сайта: бан общий ─────
+{
+  resetCounters();
+  st.pdaOk = 0;
+  st.pdaLimitAfter = 0;
+  const a = await openPopup(ctx, 'https://4pda.to/forum/index.php?showtopic=1');
+  const b = await openPopup(ctx, 'https://4pda.to/forum/index.php?showtopic=1');
+  await check('две вкладки: лимит в одной ставит на паузу другую без единого запроса', async () => {
+    await saveBtn(a.pop).click();
+    await statusWarn(a.pop);
+    st.pdaLimitAfter = Infinity;
+    st.pdaCalls.length = 0;
+    await saveBtn(b.pop).click();
+    await statusWarn(b.pop);
+    assert.equal(st.pdaCalls.length, 0, `запросов: ${st.pdaCalls.length}`);
+  });
+  await check('две вкладки: «Продолжить» в одной снимает общий бан и докачивает', async () => {
+    const dl = b.page.waitForEvent('download', { timeout: 30000 });
+    await b.pop.getByRole('button', { name: 'Продолжить' }).click();
+    const text = fs.readFileSync(await (await dl).path(), 'utf8');
+    assert.equal((text.match(/^\d+ user\d+/gm) || []).length, 6);
   });
 }
 

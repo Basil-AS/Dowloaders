@@ -2,7 +2,8 @@ import { browser } from 'wxt/browser';
 import { runOnTab } from '../core/pipeline';
 import { loadSettings } from '../core/settings';
 import { resolveLang, t } from '../core/i18n';
-import type { BgFetchResult, Msg } from '../core/messages';
+import { HostGate } from '../core/gate';
+import type { BgFetchResult, GateReply, Msg, TabPhase } from '../core/messages';
 
 const MENU_ID = 'fas-save';
 
@@ -37,6 +38,21 @@ async function proxyFetch(m: Extract<Msg, { type: 'fas/fetch' }>): Promise<BgFet
     return { status: 599, headers: {}, body: (e as Error).message };
   }
 }
+
+/** Общие для всех вкладок: очередь запросов и бан по сайту; переживает сон фона через storage.session. */
+const gate = new HostGate();
+const phases = new Map<number, TabPhase>();
+const store = (browser.storage as unknown as { session?: typeof browser.storage.local }).session;
+const ready = (async () => {
+  try {
+    const r = (await store?.get(['fasBans', 'fasPhases'])) as { fasBans?: ReturnType<HostGate['dump']>; fasPhases?: Record<string, TabPhase> } | undefined;
+    gate.load(r?.fasBans);
+    for (const [k, v] of Object.entries(r?.fasPhases ?? {})) phases.set(Number(k), v);
+  } catch {
+    /* storage.session недоступен — работаем из памяти */
+  }
+})();
+const persist = () => void store?.set({ fasBans: gate.dump(), fasPhases: Object.fromEntries(phases) }).catch(() => {});
 
 async function setBadge(tabId: number, text: string, color: string, clearAfter = 0) {
   try {
@@ -74,11 +90,45 @@ export default defineBackground(() => {
     void saveTab(tab?.id);
   });
 
+  const drop = (id: number) => {
+    if (phases.delete(id)) persist();
+  };
+  browser.tabs.onRemoved.addListener(drop);
+  browser.tabs.onUpdated.addListener((id, info) => {
+    if (info.status === 'loading') drop(id); // страница загружается заново — content-скрипт и его кэш пропали
+  });
+
   // прогресс из content-скрипта → бейдж иконки
   browser.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
     const msg = raw as Msg;
     if (msg.type === 'fas/progress' && sender.tab?.id != null && msg.progress.total) {
       void setBadge(sender.tab.id, `${Math.round((msg.progress.done / msg.progress.total) * 100)}%`, '#0b7a6f');
+    }
+    if (msg.type === 'fas/gate') {
+      void ready.then(() => {
+        if (msg.clear) gate.clear(msg.host);
+        const ban = gate.banned(msg.host);
+        persist();
+        sendResponse({ waitMs: ban ? 0 : gate.slot(msg.host), ban } satisfies GateReply);
+      });
+      return true;
+    }
+    if (msg.type === 'fas/ban') {
+      void ready.then(() => {
+        gate.ban(msg.host, msg.status, msg.retryAfterMs);
+        persist();
+        sendResponse(true);
+      });
+      return true;
+    }
+    if (msg.type === 'fas/phase' && sender.tab?.id != null) {
+      if (msg.phase.kind === 'done') phases.delete(sender.tab.id);
+      else phases.set(sender.tab.id, msg.phase);
+      persist();
+    }
+    if (msg.type === 'fas/state') {
+      void ready.then(() => sendResponse(phases.get(msg.tabId) ?? null));
+      return true;
     }
     if (msg.type === 'fas/fetch') {
       void proxyFetch(msg).then(sendResponse);

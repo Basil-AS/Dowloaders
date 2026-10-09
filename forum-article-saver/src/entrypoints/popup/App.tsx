@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import { detect, runOnTab, saveAllTabs } from '../../core/pipeline';
 import { ghToken, history as historyStore } from '../../core/settings';
 import { buildFilename } from '../../core/filename';
 import { EXT, FORMAT_LABEL, FORMATS } from '../../core/format';
 import { count, type Key } from '../../core/i18n';
-import type { Action, DetectResult, Msg, RunResult } from '../../core/messages';
+import type { Action, DetectResult, Msg, RunResult, TabPhase } from '../../core/messages';
 import type { DocKind, ExtractOptions } from '../../core/types';
 import { IconCopy, IconDownload, IconGear } from '../../ui/icons';
 import { Radios } from '../../ui/Radios';
@@ -38,6 +38,7 @@ export function App() {
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' });
   const [paused, setPaused] = useState<{ action: Action; done: number; skippable: boolean } | null>(null);
   const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
+  const own = useRef(false); // этот popup сам ждёт ответа runOnTab
 
   // Вкладку ищем сразу, параллельно с загрузкой настроек; определение страницы ждёт только флаг generic.
   useEffect(() => {
@@ -50,6 +51,27 @@ export function App() {
     browser.runtime.onMessage.addListener(onMsg);
     return () => browser.runtime.onMessage.removeListener(onMsg);
   }, []);
+
+  // Popup закрыли и открыли снова (или сохранение запущено горячей клавишей/из другой вкладки): восстанавливаем пауза/ход выполнения.
+  useEffect(() => {
+    if (typeof tabId !== 'number') return;
+    const apply = (ph: TabPhase | null | undefined) => {
+      if (!ph || own.current) return;
+      if (ph.kind === 'run') setStatus({ kind: 'run', text: tr('p_saving') });
+      else if (ph.kind === 'paused') {
+        setPaused({ action: ph.action, done: ph.done, skippable: ph.skippable });
+        setStatus({ kind: 'paused', text: ph.text });
+      } else if (ph.kind === 'failed') setStatus({ kind: 'err', text: tr('p_failed', { msg: ph.text }) });
+      else if (ph.kind === 'done') setStatus({ kind: 'ok', text: tr('p_saved') });
+    };
+    browser.runtime.sendMessage({ type: 'fas/state', tabId } satisfies Msg).then(r => apply(r as TabPhase | null), () => {});
+    const onPhase = (raw: unknown, sender: { tab?: { id?: number } }) => {
+      const m = raw as Msg;
+      if (m.type === 'fas/phase' && sender.tab?.id === tabId) apply(m.phase);
+    };
+    browser.runtime.onMessage.addListener(onPhase as never);
+    return () => browser.runtime.onMessage.removeListener(onPhase as never);
+  }, [tabId]);
 
   const generic = s?.generic;
   useEffect(() => {
@@ -97,7 +119,12 @@ export function App() {
     setStatus({ kind: 'run', text: tr('p_saving') });
     setProg({ done: 0, total: 0 });
     setPaused(null);
-    await finish(await runOnTab(tabId, action, s, { mode, ...over }), action);
+    own.current = true;
+    try {
+      await finish(await runOnTab(tabId, action, s, { mode, ...over }), action);
+    } finally {
+      own.current = false;
+    }
   };
 
   const allTabs = async () => {
@@ -235,8 +262,8 @@ export function App() {
           <div class="paused" role="group" aria-label={tr('p_pausedTitle')}>
             <p class="faint small">{tr('p_pausedHint')}</p>
             <div class="btns">
-              <button class="btn primary" onClick={() => go(paused.action)}>{tr('p_continue')}</button>
-              {paused.skippable && <button class="btn" onClick={() => go(paused.action, { skip: true })}>{tr('p_skip')}</button>}
+              <button class="btn primary" onClick={() => go(paused.action, { resume: true })}>{tr('p_continue')}</button>
+              {paused.skippable && <button class="btn" onClick={() => go(paused.action, { skip: true, resume: true })}>{tr('p_skip')}</button>}
               {paused.done > 0 && (
                 <button class="btn" onClick={() => go(paused.action, { partial: true })}>{tr('p_savePartial')}</button>
               )}
