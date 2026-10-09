@@ -14,6 +14,7 @@
   --accent-fg: #ffffff;
   --accent-soft: #e0f0ed;
   --danger: #b3261e;
+  --warn: #9a5b00;
   --ok: #2b7a3d;
   --track: #dde4e5;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
@@ -25,13 +26,13 @@
   :root:not([data-theme="light"]) {
     --bg: #131819; --surface: #1a2022; --fg: #e4eaeb; --fg-2: #a4b2b5; --fg-3: #809194;
     --line: #2d3638; --line-strong: #424e51; --accent: #4cc2b3; --accent-hover: #6dd1c4; --accent-fg: #07201d;
-    --accent-soft: #1b3431; --danger: #f2a49e; --ok: #8fd19e; --track: #2a3335; color-scheme: dark;
+    --accent-soft: #1b3431; --danger: #f2a49e; --warn: #f0b45a; --ok: #8fd19e; --track: #2a3335; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #131819; --surface: #1a2022; --fg: #e4eaeb; --fg-2: #a4b2b5; --fg-3: #809194;
   --line: #2d3638; --line-strong: #424e51; --accent: #4cc2b3; --accent-hover: #6dd1c4; --accent-fg: #07201d;
-  --accent-soft: #1b3431; --danger: #f2a49e; --ok: #8fd19e; --track: #2a3335; color-scheme: dark;
+  --accent-soft: #1b3431; --danger: #f2a49e; --warn: #f0b45a; --ok: #8fd19e; --track: #2a3335; color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -116,6 +117,11 @@ input.field[type=number] { width: 84px; font-variant-numeric: tabular-nums; }
 .status p { font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
 .status p.ok { color: var(--ok); }
 .status p.err { color: var(--danger); }
+.status p.warn, p.warn { color: var(--warn, #a15c00); }
+.paused { display: grid; gap: 8px; }
+.paused .btns { display: flex; gap: 8px; }
+.paused .btn { flex: 1 1 auto; white-space: nowrap; }
+.paused .btn.primary { flex: 0 0 auto; }
 .recent h2 { font-size: 12px; font-weight: 600; color: var(--fg-2); }
 .recent header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
 .recent ul { list-style: none; margin: 0; padding: 0; }
@@ -130,6 +136,7 @@ input.field[type=number] { width: 84px; font-variant-numeric: tabular-nums; }
 .mt-s { margin-top: 4px; }
 .empty { padding-top: 6px; }
 .wide { width: 100%; }
+textarea.field { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.4; }
 .btn-row.spaced { margin-top: 20px; }
 label.btn { cursor: pointer; }
 .hist-list a { color: inherit; }

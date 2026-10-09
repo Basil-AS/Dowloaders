@@ -39,15 +39,17 @@ function headLines(doc: ParsedDoc, detailed: boolean, lang: Lang, now: Date): st
 }
 
 function listTitle(doc: ParsedDoc, lang: Lang): string {
-  const name = t(lang, doc.kind === 'topic' ? 'h_posts' : 'h_comments');
-  const partial = doc.totalItems != null && doc.totalItems !== doc.items.length;
-  return partial ? `${name} ${t(lang, 'h_collected', { n: doc.items.length, m: doc.totalItems! })}` : `${name} ${doc.items.length}`;
+  const name = doc.itemsTitle ?? t(lang, doc.kind === 'topic' ? 'h_posts' : 'h_comments');
+  // в списках (issues, обсуждения) считаем сами записи, а не вложенные в них комментарии
+  const n = doc.kind === 'list' ? doc.items.filter(i => i.level === 0).length : doc.items.length;
+  const partial = doc.totalItems != null && doc.totalItems !== n;
+  return partial ? `${name} ${t(lang, 'h_collected', { n, m: doc.totalItems! })}` : `${name} ${n}`;
 }
 
 /** Строка-заголовок элемента. Номер печатаем только у тем форумов (на него ссылаются «→N»); в деревьях вложенность — это «>». */
 function itemHead(it: Item, numbered: boolean, prevDay: { v: string }): string {
   const parts: string[] = [];
-  if (numbered) parts.push(it.id);
+  if (numbered && it.id) parts.push(it.id);
   parts.push(it.author || '—');
   if (it.date) {
     const st = stamp(it.date, prevDay.v);
@@ -80,17 +82,36 @@ export function relativize(text: string, pageUrl: string): { text: string; base:
   return n > 1 ? { text: out, base: origin } : { text, base: null }; // одна ссылка — выигрыша нет
 }
 
+/** Забор длиннее любой серии обратных кавычек внутри текста, чтобы блок кода не «закрылся» раньше времени. */
+const fence = (s: string) => '`'.repeat(Math.max(3, ...(s.match(/`+/g) ?? []).map(x => x.length + 1)));
+const LANG: Record<string, string> = { ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', py: 'python', rs: 'rust', go: 'go', java: 'java', kt: 'kotlin', rb: 'ruby', php: 'php', c: 'c', h: 'c', cpp: 'cpp', cs: 'csharp', sh: 'bash', md: 'markdown', json: 'json', yml: 'yaml', yaml: 'yaml', toml: 'toml', html: 'html', css: 'css', sql: 'sql', swift: 'swift' };
+
+function repoBlocks(doc: ParsedDoc, lang: Lang, md: boolean): string[] {
+  const out: string[] = [];
+  if (doc.tree) out.push(md ? `## ${t(lang, 'h_structure')}\n${fence(doc.tree)}\n${doc.tree}\n${fence(doc.tree)}` : doc.tree);
+  for (const f of doc.files ?? []) {
+    if (md) {
+      const fc = fence(f.content);
+      out.push(`## ${f.path}\n${fc}${LANG[f.path.split('.').pop()?.toLowerCase() ?? ''] ?? ''}\n${f.content}\n${fc}`);
+    } else out.push(`### ${f.path}\n${f.content}`);
+  }
+  return out;
+}
+
 function render(doc: ParsedDoc, o: ExtractOptions, detailed: boolean, now: Date, md: boolean): string {
-  const numbered = doc.kind === 'topic';
+  const numbered = doc.kind === 'topic' || doc.kind === 'list';
   const rest: string[] = [];
   if (doc.body) rest.push(doc.body);
-  if (doc.items.length || doc.kind !== 'topic') rest.push(md ? `## ${listTitle(doc, o.lang)}` : listTitle(doc, o.lang));
+  if (doc.kind === 'repo') rest.push(...repoBlocks(doc, o.lang, md));
+  else if (doc.items.length || doc.kind !== 'topic') rest.push(md ? `## ${listTitle(doc, o.lang)}` : listTitle(doc, o.lang));
   const day = { v: '' };
   for (const it of doc.items) {
     const h = itemHead(it, numbered, day);
     rest.push(`${md ? `**${h}**` : h}\n${tight(it.text)}`);
   }
-  const { text: body, base } = relativize(rest.join('\n\n'), doc.url);
+  // в дайджесте репозитория содержимое файлов остаётся дословным: ссылки внутри кода и документации менять нельзя
+  const joined = rest.join('\n\n');
+  const { text: body, base } = doc.kind === 'repo' ? { text: joined, base: null } : relativize(joined, doc.url);
   const head = [md ? `# ${doc.title}` : doc.title, ...headLines(doc, detailed, o.lang, now)];
   if (base) head.push(t(o.lang, 'h_base', { base }));
   const out = [head.join('\n'), body];
@@ -104,7 +125,7 @@ function toJson(doc: ParsedDoc, now: Date): string {
     id, author, ...(date && { date }), ...(score != null && score !== 0 && { score }), ...(level && { level }), ...(replyTo && { replyTo }), text,
   }));
   const meta = Object.fromEntries(doc.meta.map(([k, v]) => [k, v]));
-  return JSON.stringify({ title: doc.title, url: doc.url, kind: doc.kind, meta, ...(doc.body && { body: doc.body }), items, ...(doc.warnings.length && { warnings: doc.warnings }), exportedAt: now.toISOString() });
+  return JSON.stringify({ title: doc.title, url: doc.url, kind: doc.kind, meta, ...(doc.body && { body: doc.body }), ...(doc.tree && { tree: doc.tree }), ...(doc.files && { files: doc.files }), items, ...(doc.warnings.length && { warnings: doc.warnings }), exportedAt: now.toISOString() });
 }
 
 export function formatDoc(doc: ParsedDoc, o: ExtractOptions, opts: { detailed?: boolean; now?: Date } = {}): string {

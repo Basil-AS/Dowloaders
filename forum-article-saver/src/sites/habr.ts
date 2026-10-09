@@ -1,5 +1,5 @@
 import type { Item, Meta, ParsedDoc, SiteAdapter } from '../core/types';
-import { getJSON } from '../core/http';
+import { getJSON, RateLimitError } from '../core/http';
 import { htmlToText } from '../core/html';
 import { t, tFor } from '../core/i18n';
 
@@ -86,6 +86,7 @@ export const habr: SiteAdapter = {
         roots.forEach(r => emit(r, 0));
         list.filter(x => x.parentId && !map[String(x.parentId)]).forEach(x => emit(x, 1)); // «осиротевшие»
       } catch (e) {
+        if (e instanceof RateLimitError) throw e;
         warnings.push(L('w_comments_failed', { msg: (e as Error).message }));
       }
     }

@@ -2,9 +2,41 @@ import { browser } from 'wxt/browser';
 import { runOnTab } from '../core/pipeline';
 import { loadSettings } from '../core/settings';
 import { resolveLang, t } from '../core/i18n';
-import type { Msg } from '../core/messages';
+import type { BgFetchResult, Msg } from '../core/messages';
 
 const MENU_ID = 'fas-save';
+
+/** Фон ходит только на эти хосты: хост-права и токен GitHub есть только у него, страница их не видит. */
+const GH_HOSTS = new Set(['api.github.com', 'raw.githubusercontent.com']);
+const PASS_HEADERS = ['accept', 'content-type', 'x-github-api-version'];
+const KEEP_HEADERS = ['link', 'content-type', 'retry-after', 'x-ratelimit-remaining', 'x-ratelimit-reset'];
+
+async function proxyFetch(m: Extract<Msg, { type: 'fas/fetch' }>): Promise<BgFetchResult> {
+  let u: URL;
+  try {
+    u = new URL(m.url);
+  } catch {
+    return { status: 400, headers: {}, body: 'bad url' };
+  }
+  if (u.protocol !== 'https:' || !GH_HOSTS.has(u.hostname)) return { status: 400, headers: {}, body: 'host not allowed' };
+  // записывающий запрос только один — GraphQL (чтение обсуждений); токен пользователя не должен годиться ни для чего другого
+  if (m.method === 'POST' && !(u.hostname === 'api.github.com' && u.pathname === '/graphql')) return { status: 400, headers: {}, body: 'method not allowed' };
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(m.headers ?? {})) if (PASS_HEADERS.includes(k.toLowerCase())) headers[k] = v;
+  const { ghToken } = (await browser.storage.local.get('ghToken')) as { ghToken?: string };
+  if (ghToken) headers.Authorization = u.hostname === 'api.github.com' ? `Bearer ${ghToken}` : `token ${ghToken}`;
+  try {
+    const res = await fetch(u.href, { method: m.method === 'POST' ? 'POST' : m.method === 'HEAD' ? 'HEAD' : 'GET', headers, body: m.method === 'POST' ? m.body : undefined, credentials: 'omit', cache: 'no-store' });
+    const out: Record<string, string> = {};
+    for (const k of KEEP_HEADERS) {
+      const v = res.headers.get(k);
+      if (v != null) out[k] = v;
+    }
+    return { status: res.status, headers: out, body: await res.text() };
+  } catch (e) {
+    return { status: 599, headers: {}, body: (e as Error).message };
+  }
+}
 
 async function setBadge(tabId: number, text: string, color: string, clearAfter = 0) {
   try {
@@ -43,10 +75,14 @@ export default defineBackground(() => {
   });
 
   // прогресс из content-скрипта → бейдж иконки
-  browser.runtime.onMessage.addListener((raw: unknown, sender) => {
+  browser.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
     const msg = raw as Msg;
     if (msg.type === 'fas/progress' && sender.tab?.id != null && msg.progress.total) {
       void setBadge(sender.tab.id, `${Math.round((msg.progress.done / msg.progress.total) * 100)}%`, '#0b7a6f');
+    }
+    if (msg.type === 'fas/fetch') {
+      void proxyFetch(msg).then(sendResponse);
+      return true; // ответ асинхронный
     }
   });
 });

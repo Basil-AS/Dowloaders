@@ -1,5 +1,5 @@
 import type { Ctx, ExtractOptions, Item, Meta, ParsedDoc, ProgressFn, SiteAdapter } from '../core/types';
-import { getJSON, sleep } from '../core/http';
+import { getJSON, RateLimitError, sleep } from '../core/http';
 import { domToText } from '../core/html';
 import { tFor } from '../core/i18n';
 import { hostLabel } from '../core/run';
@@ -49,6 +49,7 @@ async function viaJSON({ url, fetch: f }: Ctx, o: ExtractOptions, progress: Prog
           const j = await getJSON(f, `${url.origin}/api/morechildren.json?api_type=json&raw_json=1&link_id=t3_${id}&children=${ids.slice(i, i + 100).join(',')}`);
           collect((j.json?.data?.things ?? []).map((t: any) => ({ kind: t.kind, data: t.data })));
         } catch (e) {
+          if (e instanceof RateLimitError) throw e;
           warnings.push(`morechildren: ${(e as Error).message}`);
         }
         await sleep(o.delayMs + 250);

@@ -5,6 +5,11 @@ export type Theme = 'system' | 'light' | 'dark';
 export type ImageMode = 'none' | 'alt' | 'url';
 
 /** Один комментарий / пост форума. level — глубина вложенности (0 = корень). */
+export interface RepoFile {
+  path: string;
+  content: string;
+}
+
 export interface Item {
   id: string;
   author: string;
@@ -16,7 +21,8 @@ export interface Item {
   text: string;
 }
 
-export type DocKind = 'article' | 'post' | 'topic';
+/** repo — дайджест репозитория, list — список (все issues / обсуждения): элементы нумерованы, ответы вложены. */
+export type DocKind = 'article' | 'post' | 'topic' | 'repo' | 'list';
 
 /** [название, значение, extra]: extra=true показывается только в подробной шапке. */
 export type Meta = [label: string, value: string, extra?: true];
@@ -35,6 +41,11 @@ export interface ParsedDoc {
   items: Item[];
   /** Всего элементов на площадке (если известно) — для «собрано N из M». */
   totalItems: number | null;
+  /** Заголовок списка элементов, если он не «Комментарии»/«Сообщения». */
+  itemsTitle?: string;
+  /** Только для kind='repo': структура каталогов и файлы. */
+  tree?: string;
+  files?: RepoFile[];
   warnings: string[];
 }
 
@@ -55,11 +66,26 @@ export interface ExtractOptions {
   quotes: boolean;
   concurrency: number;
   delayMs: number;
+  /** Режим площадки (GitHub: item / digest / issues / pulls / discussions). */
+  mode?: string;
+  /** Не докачивать: собрать документ из уже скачанного (после паузы). */
+  partial?: boolean;
+  github: GithubOptions;
+}
+
+export interface GithubOptions {
+  state: 'all' | 'open' | 'closed';
+  include: string;
+  exclude: string;
+  maxFileKb: number;
+  maxItems: number;
 }
 
 export interface Progress {
   done: number;
   total: number;
+  /** Идёт вынужденная пауза (мс): сайт попросил подождать. */
+  waitMs?: number;
 }
 export type ProgressFn = (p: Progress) => void;
 
@@ -68,6 +94,18 @@ export interface Ctx {
   url: URL;
   doc: Document;
   fetch: typeof fetch;
+  /** fetch через фоновую страницу (хост-права и токен GitHub); в тестах — тот же fetch. */
+  bgFetch?: typeof fetch;
+  /** Кэш докачки: то, что уже скачано, переживает паузу. */
+  cache: ResumeCache;
+}
+
+export interface ResumeCache {
+  get<T>(key: string): T | undefined;
+  has(key: string): boolean;
+  set(key: string, value: unknown): void;
+  delete(key: string): void;
+  deletePrefix(prefix: string): void;
 }
 
 export interface SiteAdapter {
@@ -77,6 +115,10 @@ export interface SiteAdapter {
   /** Поддерживает «последние N %». */
   paged: boolean;
   hasComments: boolean;
+  /** Режимы работы на этой странице (если их несколько) и режим по умолчанию. */
+  modes?(ctx: Ctx): { list: string[]; def: string } | null;
+  /** Заголовок для шапки popup и подсказки имени файла, если «заголовок вкладки» не подходит. */
+  pageTitle?(ctx: Ctx): string | null;
   /** Запасной адаптер: используется, только если ни один конкретный не подошёл и это разрешено настройками. */
   fallback?: boolean;
   detect(ctx: Ctx): boolean;
@@ -102,6 +144,7 @@ export interface Settings {
   delayMs: number;
   filenameTemplate: string;
   history: boolean;
+  github: GithubOptions;
 }
 
 export interface HistoryEntry {

@@ -1,5 +1,5 @@
 import type { Ctx, ImageMode, Item, Meta, ParsedDoc, SiteAdapter } from '../core/types';
-import { getJSON, runPool } from '../core/http';
+import { getJSON, PausedError, RateLimitError, runPool } from '../core/http';
 import { domToText } from '../core/html';
 import { t, tFor } from '../core/i18n';
 
@@ -39,7 +39,7 @@ export const discourse: SiteAdapter = {
   hasComments: false,
   detect: ({ url, doc }: Ctx) => isDiscourse(doc) && !!topicId(url.pathname),
 
-  async extract({ url, doc, fetch: f }, o, progress): Promise<ParsedDoc> {
+  async extract({ url, doc, fetch: f, cache }, o, progress): Promise<ParsedDoc> {
     const L = tFor(o.lang);
     const id = topicId(url.pathname)!;
     const base = `${url.origin}/t/${id}`;
@@ -50,27 +50,42 @@ export const discourse: SiteAdapter = {
     const wanted = stream.slice(stream.length - take);
 
     const byId = new Map<number, any>();
+    const ck = (id: number) => `disc:${url.host}:${id}`;
     for (const p of topic.post_stream?.posts ?? []) byId.set(p.id, p);
+    for (const id of wanted) if (!byId.has(id) && cache.has(ck(id))) byId.set(id, cache.get(ck(id)));
     const missing = wanted.filter(i => !byId.has(i));
     const chunks: number[][] = [];
     for (let i = 0; i < missing.length; i += 20) chunks.push(missing.slice(i, i + 20));
 
     const warnings: string[] = [];
     let done = 0;
-    await runPool(
-      chunks,
-      Math.min(o.concurrency, 4),
-      async ch => {
-        try {
-          const j = await getJSON(f, `${base}/posts.json?${ch.map(i => `post_ids[]=${i}`).join('&')}&include_suggested=false`);
-          for (const p of j.post_stream?.posts ?? []) byId.set(p.id, p);
-        } catch {
-          /* недостающие посты учтём ниже одним предупреждением */
-        }
-        progress({ done: ++done, total: chunks.length });
-      },
-      o.delayMs,
-    );
+    if (!o.partial) {
+      try {
+        await runPool(
+          chunks,
+          Math.min(o.concurrency, 4),
+          async ch => {
+            try {
+              const j = await getJSON(f, `${base}/posts.json?${ch.map(i => `post_ids[]=${i}`).join('&')}&include_suggested=false`);
+              for (const p of j.post_stream?.posts ?? []) {
+                byId.set(p.id, p);
+                cache.set(ck(p.id), p);
+              }
+            } catch (e) {
+              if (e instanceof RateLimitError) throw e;
+              /* недостающие посты учтём ниже одним предупреждением */
+            }
+            progress({ done: ++done, total: chunks.length });
+          },
+          o.delayMs,
+          e => e instanceof RateLimitError,
+        );
+      } catch (e) {
+        if (!(e instanceof RateLimitError)) throw e;
+        const have = wanted.filter(i => byId.has(i)).length;
+        throw new PausedError(L('w_paused', { site: url.hostname, status: e.status, done: have, total: wanted.length }), have, wanted.length);
+      }
+    }
 
     const items: Item[] = [];
     for (const pid of wanted) {
@@ -87,7 +102,8 @@ export const discourse: SiteAdapter = {
         text: p.hidden ? L('w_hidden_post') : cookedToText(p.cooked, o, doc),
       });
     }
-    if (items.length < wanted.length) warnings.push(L('w_posts_failed', { n: wanted.length - items.length }));
+    if (items.length < wanted.length) warnings.push(o.partial ? L('w_partial', { done: items.length, total: wanted.length }) : L('w_posts_failed', { n: wanted.length - items.length }));
+    if (!o.partial) for (const id of wanted) cache.delete(ck(id));
 
     const tags = (topic.tags ?? []).map((t: any) => (typeof t === 'string' ? t : t.name)).join(', ');
     const meta: Meta[] = [
