@@ -21,7 +21,7 @@ export interface GateReply {
 }
 
 export type TabPhase =
-  | { kind: 'run' }
+  | { kind: 'run'; done?: number; total?: number }
   | { kind: 'paused'; action: Action; done: number; total: number; skippable: boolean; text: string }
   | { kind: 'done' }
   | { kind: 'failed'; text: string };

@@ -44,20 +44,28 @@ export function App() {
   useEffect(() => {
     void currentTabId().then(id => setTabId(id ?? null));
     void ghToken.get().then(t => setHasToken(!!t));
-    const onMsg = (raw: unknown) => {
-      const m = raw as Msg;
-      if (m.type === 'fas/progress' && m.progress.total) setProg(m.progress);
-    };
-    browser.runtime.onMessage.addListener(onMsg);
-    return () => browser.runtime.onMessage.removeListener(onMsg);
   }, []);
+
+  // Прогресс приходит от всех вкладок сразу: показываем только текущую (иначе при параллельных сохранениях цифры мелькают).
+  useEffect(() => {
+    if (typeof tabId !== 'number') return;
+    const onMsg = (raw: unknown, sender: { tab?: { id?: number } }) => {
+      const m = raw as Msg;
+      if (m.type === 'fas/progress' && m.progress.total && sender.tab?.id === tabId) setProg(m.progress);
+    };
+    browser.runtime.onMessage.addListener(onMsg as never);
+    return () => browser.runtime.onMessage.removeListener(onMsg as never);
+  }, [tabId]);
 
   // Popup закрыли и открыли снова (или сохранение запущено горячей клавишей/из другой вкладки): восстанавливаем пауза/ход выполнения.
   useEffect(() => {
     if (typeof tabId !== 'number') return;
     const apply = (ph: TabPhase | null | undefined) => {
       if (!ph || own.current) return;
-      if (ph.kind === 'run') setStatus({ kind: 'run', text: tr('p_saving') });
+      if (ph.kind === 'run') {
+        setStatus({ kind: 'run', text: tr('p_saving') });
+        setProg({ done: ph.done ?? 0, total: ph.total ?? 0 });
+      }
       else if (ph.kind === 'paused') {
         setPaused({ action: ph.action, done: ph.done, skippable: ph.skippable });
         setStatus({ kind: 'paused', text: ph.text });

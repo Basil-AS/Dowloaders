@@ -102,6 +102,8 @@ export default defineBackground(() => {
   browser.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
     const msg = raw as Msg;
     if (msg.type === 'fas/progress' && sender.tab?.id != null && msg.progress.total) {
+      const cur = phases.get(sender.tab.id);
+      if (!cur || cur.kind === 'run') phases.set(sender.tab.id, { kind: 'run', done: msg.progress.done, total: msg.progress.total });
       void setBadge(sender.tab.id, `${Math.round((msg.progress.done / msg.progress.total) * 100)}%`, '#0b7a6f');
     }
     if (msg.type === 'fas/gate') {
