@@ -4,6 +4,7 @@ import { reddit } from './reddit';
 import { fourpda } from './fourpda';
 import { discourse } from './discourse';
 import { generic } from './generic';
+import { github } from './github';
 
 /** Порядок важен: конкретные площадки раньше движка Discourse, а универсальный разбор статей — последним. */
-export const ADAPTERS: SiteAdapter[] = [habr, reddit, fourpda, discourse, generic];
+export const ADAPTERS: SiteAdapter[] = [habr, reddit, fourpda, discourse, github, generic];

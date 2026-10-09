@@ -68,7 +68,7 @@ export async function openPopup(ctx, siteUrl, viewport) {
   await page.goto(siteUrl);
   const pop = await ctx.newPage(viewport ? { viewport } : undefined);
   await pop.goto(popupUrl);
-  const tabId = await pop.evaluate(async u => (await chrome.tabs.query({})).find(t => t.url === u).id, siteUrl);
+  const tabId = await pop.evaluate(async u => (await chrome.tabs.query({})).filter(t => t.url === u).sort((a, b) => b.id - a.id)[0].id, siteUrl);
   await pop.goto(`${popupUrl}?tabId=${tabId}`);
   await pop.waitForSelector('.popup');
   await pop.waitForFunction(() => document.querySelector('.where')?.textContent !== '');
@@ -76,3 +76,14 @@ export async function openPopup(ctx, siteUrl, viewport) {
 }
 
 export const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true });
+
+/** Браузер, у которого GitHub и 4PDA — это локальный HTTPS-сервер (см. local-mock.mjs). */
+export async function launchLocal({ colorScheme = 'light', locale = 'ru-RU' } = {}) {
+  const { startMock } = await import('./local-mock.mjs');
+  const mock = await startMock(path.join(tmp, 'tls'));
+  const ctx = await chromium.launchPersistentContext(path.join(tmp, `profile-local-${mock.port}`), {
+    executablePath: process.env.CHROMIUM ?? '/opt/pw-browsers/chromium', headless: false, acceptDownloads: true, colorScheme, locale,
+    args: ['--headless=new', '--no-sandbox', '--no-proxy-server', '--ignore-certificate-errors', `--host-resolver-rules=${mock.resolverRules}`, `--disable-extensions-except=${extPath}`, `--load-extension=${extPath}`],
+  });
+  return { ctx, mock, close: async () => { await ctx.close(); mock.close(); } };
+}

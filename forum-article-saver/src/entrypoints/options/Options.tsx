@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { browser } from 'wxt/browser';
-import { DEFAULT_SETTINGS, history as historyStore, sanitizeSettings } from '../../core/settings';
+import { DEFAULT_SETTINGS, ghToken, history as historyStore, sanitizeSettings } from '../../core/settings';
 import { buildFilename } from '../../core/filename';
 import { EXT, FORMAT_LABEL, FORMATS } from '../../core/format';
 import { saveBlob } from '../../core/run';
@@ -31,10 +31,12 @@ export function Options() {
   const [note, setNote] = useState('');
   const [resetArmed, confirmReset] = useConfirm();
   const [shortcut, setShortcut] = useState<string | null>(null);
+  const [token, setToken] = useState('');
   const tpl = useRef<HTMLInputElement>(null);
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    void ghToken.get().then(setToken);
     void browser.commands.getAll().then(cs => setShortcut(cs.find(c => c.name === 'save-page')?.shortcut || ''));
   }, []);
 
@@ -87,7 +89,7 @@ export function Options() {
       </header>
 
       <nav aria-label={tr('o_title')}>
-        {([['appearance', 'o_appearance'], ['content', 'o_content'], ['files', 'o_files'], ['network', 'o_network'], ['data', 'o_data'], ['about', 'o_about']] as [string, Key][]).map(([id, k]) => (
+        {([['appearance', 'o_appearance'], ['content', 'o_content'], ['files', 'o_files'], ['network', 'o_network'], ['github', 'o_github'], ['data', 'o_data'], ['about', 'o_about']] as [string, Key][]).map(([id, k]) => (
           <a href={`#${id}`}>{tr(k)}</a>
         ))}
       </nav>
@@ -146,6 +148,49 @@ export function Options() {
           <h2>{tr('o_network')}</h2>
           {number('concurrency', 'o_concurrency', 'o_concurrencyHint', 1, 8)}
           {number('delayMs', 'o_delay', undefined, 0, 5000)}
+        </section>
+
+        <section id="github">
+          <h2>{tr('o_github')}</h2>
+          <p class="muted">{tr('o_ghIntro')}</p>
+          <Setting label={tr('o_ghToken')} hint={tr('o_ghTokenHint')} stack for="o-ghtoken">
+            <input
+              id="o-ghtoken"
+              class="field mono wide"
+              type="password"
+              autocomplete="off"
+              spellcheck={false}
+              placeholder="github_pat_… / ghp_…"
+              value={token}
+              onChange={e => {
+                setToken(e.currentTarget.value);
+                void ghToken.set(e.currentTarget.value);
+                set({});
+              }}
+            />
+            <p class="small mt-s">
+              <a class="link" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">{tr('o_ghTokenLink')}</a>
+            </p>
+          </Setting>
+          <Setting label={tr('o_ghState')} for="o-ghstate">
+            <select id="o-ghstate" class="field" value={s.github.state} onChange={e => set({ github: { ...s.github, state: e.currentTarget.value as typeof s.github.state } })}>
+              {(['all', 'open', 'closed'] as const).map(v => (
+                <option value={v}>{tr(`state_${v}` as Key)}</option>
+              ))}
+            </select>
+          </Setting>
+          <Setting label={tr('o_ghMaxItems')} for="o-ghitems">
+            <input id="o-ghitems" class="field" type="number" min={10} max={5000} value={s.github.maxItems} onChange={e => set({ github: { ...s.github, maxItems: Number(e.currentTarget.value) } })} />
+          </Setting>
+          <Setting label={tr('o_ghMaxFile')} for="o-ghfile">
+            <input id="o-ghfile" class="field" type="number" min={1} max={5000} value={s.github.maxFileKb} onChange={e => set({ github: { ...s.github, maxFileKb: Number(e.currentTarget.value) } })} />
+          </Setting>
+          <Setting label={tr('o_ghInclude')} hint={tr('o_ghMasksHint')} stack for="o-ghinc">
+            <textarea id="o-ghinc" class="field mono wide area" rows={3} spellcheck={false} value={s.github.include} onChange={e => set({ github: { ...s.github, include: e.currentTarget.value } })} />
+          </Setting>
+          <Setting label={tr('o_ghExclude')} stack for="o-ghexc">
+            <textarea id="o-ghexc" class="field mono wide area" rows={3} spellcheck={false} value={s.github.exclude} onChange={e => set({ github: { ...s.github, exclude: e.currentTarget.value } })} />
+          </Setting>
         </section>
 
         <section id="data">

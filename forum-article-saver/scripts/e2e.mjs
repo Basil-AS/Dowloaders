@@ -77,7 +77,7 @@ for (const [name, s] of Object.entries(SITES)) {
   if (name === 'unsupported') {
     await check('unsupported: пояснение и список сайтов', async () => {
       assert.match(await pop.textContent('.popup'), /нельзя/);
-      assert.equal(await pop.locator('.sites li').count(), 5);
+      assert.equal(await pop.locator('.sites li').count(), 6);
     });
     continue;
   }

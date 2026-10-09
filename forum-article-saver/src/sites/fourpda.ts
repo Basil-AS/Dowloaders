@@ -1,9 +1,12 @@
 import type { ImageMode, Item, Meta, ParsedDoc, SiteAdapter } from '../core/types';
-import { getText, runPool } from '../core/http';
+import { getText, PausedError, RateLimitError, runPool, sleep } from '../core/http';
 import { domToText } from '../core/html';
 import { t, tFor } from '../core/i18n';
 
 const LINK_TITLE = 'Ссылка на это сообщение';
+/** Предел параллелизма и пауза между запросами: выше этого 4PDA отвечает 429. */
+const SAFE_CONCURRENCY = 3;
+const SAFE_DELAY_MS = 400;
 
 function detectPagination(doc: Document): { perPage: number; totalPages: number } {
   let perPage = 20;
@@ -84,7 +87,7 @@ export const fourpda: SiteAdapter = {
   hasComments: false,
   detect: ({ url }) => /(^|\.)4pda\.(to|ru)$/.test(url.hostname) && url.searchParams.has('showtopic'),
 
-  async extract({ url, doc, fetch: f }, o, progress): Promise<ParsedDoc> {
+  async extract({ url, doc, fetch: f, cache }, o, progress): Promise<ParsedDoc> {
     const L = tFor(o.lang);
     const topicId = url.searchParams.get('showtopic')!;
     const base = `${url.origin}/forum/index.php?showtopic=${topicId}`;
@@ -94,32 +97,64 @@ export const fourpda: SiteAdapter = {
     const count = o.percent >= 100 ? totalPages : Math.max(1, Math.ceil((totalPages * o.percent) / 100));
     const start = totalPages - count;
     const pages = Array.from({ length: count }, (_, i) => start + i);
+    const key = (p: number) => `4pda:${topicId}:${p}`;
+    const missing = () => pages.filter(p => !cache.has(key(p)));
+    const done = () => count - missing().length;
+    const errors = new Map<number, string>(); // страница → причина; успешная повторная загрузка убирает запись
+
+    // 4PDA быстро отвечает 429 и может надолго заблокировать IP, поэтому темп заведомо мягкий.
+    let workers = Math.min(o.concurrency, SAFE_CONCURRENCY);
+    const delay = Math.max(o.delayMs, SAFE_DELAY_MS);
+
+    const fetchPage = async (page: number) => {
+      try {
+        const html = await getText(f, `${base}&st=${page * perPage}`, 'windows-1251', { blockStatuses: [403] });
+        if (!/data-post=/.test(html)) throw new Error('нет сообщений'); // защитная страница вместо темы
+        cache.set(key(page), html);
+        errors.delete(page);
+      } catch (e) {
+        // 403 на самом первом запросе — это закрытая тема, а не бан: без смысла ждать и просить «продолжить»
+        if (e instanceof RateLimitError && e.status === 403 && done() === 0) throw new Error(L('e_denied', { site: '4PDA', status: 403 }));
+        if (e instanceof RateLimitError) throw e;
+        errors.set(page, (e as Error).message);
+      }
+      progress({ done: done(), total: count });
+    };
+
+    if (!o.partial) {
+      let probed = false;
+      progress({ done: done(), total: count });
+      for (;;) {
+        try {
+          await runPool(missing(), workers, fetchPage, delay, e => e instanceof RateLimitError);
+          break;
+        } catch (e) {
+          if (!(e instanceof RateLimitError)) throw e;
+          if (!probed) {
+            // одна осторожная проба после паузы, строго одним запросом; повторное ограничение — сразу пауза для пользователя
+            probed = true;
+            workers = 1;
+            const wait = Math.min(Math.max(e.retryAfterMs ?? 20_000, 10_000), 60_000);
+            progress({ done: done(), total: count, waitMs: wait });
+            await sleep(wait);
+            continue;
+          }
+          throw new PausedError(L('w_paused', { site: '4PDA', status: e.status, done: done(), total: count }), done(), count);
+        }
+      }
+    }
 
     const seen = new Set<string>();
-    const errors: string[] = [];
-    let completed = 0;
-    let fetched = 0;
-
-    const results = await runPool(
-      pages,
-      o.concurrency,
-      async page => {
-        let posts: Item[] = [];
-        try {
-          const html = await getText(f, `${base}&st=${page * perPage}`, 'windows-1251');
-          posts = parsePosts(new DOMParser().parseFromString(html, 'text/html'), o, seen);
-          fetched += posts.length;
-        } catch (e) {
-          errors.push(`стр. ${page + 1}: ${(e as Error).message}`);
-        }
-        progress({ done: ++completed, total: count });
-        return posts;
-      },
-      o.delayMs,
-    );
-
-    const items = results.flat();
+    const items = pages.flatMap(p => {
+      const html = cache.get<string>(key(p));
+      return html ? parsePosts(new DOMParser().parseFromString(html, 'text/html'), o, seen) : [];
+    });
     if (!items.length) throw new Error(L('e_nothing'));
+    const warnings: string[] = [];
+    const failed = pages.filter(p => errors.has(p) && !cache.has(key(p)));
+    if (failed.length) warnings.push(`${L('w_pages_failed', { n: failed.length })} (${failed.slice(0, 5).map(p => `стр. ${p + 1}: ${errors.get(p)}`).join('; ')})`);
+    if (o.partial && done() < count) warnings.push(L('w_partial', { done: done(), total: count }));
+    if (!o.partial) cache.deletePrefix(`4pda:${topicId}:`); // после «сохранить, что есть» скачанное остаётся для докачки
     return {
       id: topicId,
       site: '4pda.to',
@@ -132,7 +167,7 @@ export const fourpda: SiteAdapter = {
       body: '',
       items,
       totalItems: null,
-      warnings: errors.length ? [`${L('w_pages_failed', { n: errors.length })} (${errors.slice(0, 5).join('; ')})`] : [],
+      warnings,
     };
   },
 };

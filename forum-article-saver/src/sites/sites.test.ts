@@ -7,6 +7,8 @@ import { generic } from './generic';
 import { ADAPTERS } from './index';
 import { pickAdapter } from '../core/run';
 import { toExtractOptions, DEFAULT_SETTINGS } from '../core/settings-model';
+import { TtlCache } from '../core/cache';
+import { RateLimitError } from '../core/http';
 import type { Ctx } from '../core/types';
 
 const o = toExtractOptions(DEFAULT_SETTINGS, { lang: 'ru' });
@@ -15,6 +17,7 @@ const mkCtx = (href: string, html = '<html><body></body></html>', f: typeof fetc
   url: new URL(href),
   doc: new DOMParser().parseFromString(html, 'text/html'),
   fetch: f,
+  cache: new TtlCache(),
 });
 const noop = () => {};
 
@@ -204,5 +207,43 @@ describe('generic (статьи на любых сайтах)', () => {
     const ctx = mkCtx('https://blog.example.com/posts/x', html);
     expect(pickAdapter(ADAPTERS, ctx)?.id).toBe('generic');
     expect(pickAdapter(ADAPTERS, ctx, { fallback: false })).toBeUndefined();
+  });
+});
+
+describe('429 у остальных площадок: пауза вместо тихой потери', () => {
+  const limited = (async () => new Response('', { status: 429, headers: { 'retry-after': '7' } })) as never;
+  it('Хабр: статья', async () => {
+    const e = await habr.extract(mkCtx('https://habr.com/ru/articles/5/', undefined, limited), o, noop).catch(x => x);
+    expect(e).toBeInstanceOf(RateLimitError);
+    expect(e.retryAfterMs).toBe(7000);
+  });
+  it('Хабр: комментарии не превращаются в «предупреждение», а останавливают сохранение', async () => {
+    const f = (async (u: string) => (u.includes('/comments/') ? new Response('', { status: 429 }) : json({ titleHtml: 'T', textHtml: 'b' }))) as never;
+    await expect(habr.extract(mkCtx('https://habr.com/ru/articles/5/', undefined, f), o, noop)).rejects.toBeInstanceOf(RateLimitError);
+  });
+  it('Discourse: докачка берёт уже скачанные посты из кэша', async () => {
+    const mkPost = (n: number) => ({ id: 1000 + n, post_number: n, username: 'u' + n, created_at: '2024-05-01T10:00:00Z', cooked: `<p>p${n}</p>`, actions_summary: [] });
+    const stream = Array.from({ length: 45 }, (_, i) => 1001 + i);
+    const html = '<html><head><meta name="generator" content="Discourse 3.3"></head><body></body></html>';
+    const cache = new TtlCache();
+    let limit = true;
+    const chunks: number[] = [];
+    const f = (async (u: string) => {
+      const url = new URL(u);
+      if (url.pathname === '/t/1.json') return json({ title: 'T', slug: 's', post_stream: { stream, posts: stream.slice(0, 20).map(i => mkPost(i - 1000)) } });
+      const ids = url.searchParams.getAll('post_ids[]').map(Number);
+      if (limit && chunks.length >= 1) return new Response('', { status: 429 });
+      chunks.push(ids.length);
+      return json({ post_stream: { posts: ids.map(i => mkPost(i - 1000)) } });
+    }) as never;
+    const ctx = () => ({ ...mkCtx('https://ntc.party/t/s/1', html, f), cache });
+    const err = await discourse.extract(ctx(), { ...o, concurrency: 1, delayMs: 0 }, noop).catch(e => e);
+    expect(err.name).toBe('PausedError');
+    expect([err.done, err.total]).toEqual([40, 45]);
+    limit = false;
+    chunks.length = 0;
+    const d = await discourse.extract(ctx(), { ...o, concurrency: 1, delayMs: 0 }, noop);
+    expect(chunks).toEqual([5]); // только недостающий блок
+    expect(d.items).toHaveLength(45);
   });
 });

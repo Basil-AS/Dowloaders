@@ -186,9 +186,9 @@ describe('settings', () => {
 describe('http', () => {
   it('fetchRetry: повторяет 503, не повторяет 404', async () => {
     const f = vi.fn().mockResolvedValueOnce(new Response('', { status: 503 })).mockResolvedValueOnce(new Response('ok'));
-    expect(await (await fetchRetry(f as never, 'u', {}, 3, 1)).text()).toBe('ok');
+    expect(await (await fetchRetry(f as never, 'u', {}, { tries: 3, baseDelay: 1 })).text()).toBe('ok');
     const g = vi.fn().mockResolvedValue(new Response('', { status: 404 }));
-    await expect(fetchRetry(g as never, 'u', {}, 3, 1)).rejects.toThrow('HTTP 404');
+    await expect(fetchRetry(g as never, 'u', {}, { tries: 3, baseDelay: 1 })).rejects.toThrow('HTTP 404');
     expect(g).toHaveBeenCalledTimes(1);
   });
   it('runPool: порядок и лимит параллелизма', async () => {

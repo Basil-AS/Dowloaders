@@ -1,4 +1,5 @@
 import { storage } from 'wxt/utils/storage';
+import { browser } from 'wxt/browser';
 import type { HistoryEntry, Settings } from './types';
 import { DEFAULT_SETTINGS, MAX_HISTORY, sanitizeSettings } from './settings-model';
 
@@ -19,6 +20,12 @@ export function watchSettings(cb: (s: Settings) => void): () => void {
 
 /** Запись истории — «прочитать, изменить, записать»; очередь не даёт параллельным сохранениям затереть друг друга. */
 let writeQueue: Promise<unknown> = Promise.resolve();
+
+/** Токен GitHub хранится только в storage.local этого браузера (не в sync) и читается фоновой страницей. */
+export const ghToken = {
+  get: async () => ((await browser.storage.local.get('ghToken')) as { ghToken?: string }).ghToken ?? '',
+  set: (v: string) => (v.trim() ? browser.storage.local.set({ ghToken: v.trim() }) : browser.storage.local.remove('ghToken')),
+};
 
 export const history = {
   list: () => historyItem.getValue(),

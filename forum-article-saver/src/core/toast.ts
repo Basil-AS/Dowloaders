@@ -3,7 +3,8 @@ import { t } from './i18n';
 
 /** Плашка прогресса на странице. Shadow DOM: стили сайта на неё не влияют, её стили — на сайт. */
 export interface Toast {
-  update(done: number, total: number): void;
+  update(done: number, total: number, waitMs?: number): void;
+  pause(message: string): void;
   done(name: string): void;
   fail(message: string): void;
   close(): void;
@@ -49,8 +50,8 @@ export function createToast(opts: { site: string; lang: Lang; theme: Theme }, do
   title.textContent = t(opts.lang, 'p_savingSite', { site: opts.site });
   const close = () => host.remove();
   return {
-    update: (done, total) => {
-      sub.textContent = t(opts.lang, 'p_progress', { done, total });
+    update: (done, total, waitMs) => {
+      sub.textContent = waitMs ? t(opts.lang, 'p_waiting', { sec: Math.ceil(waitMs / 1000), done, total }) : t(opts.lang, 'p_progress', { done, total });
       fill.style.width = `${total ? Math.round((done / total) * 100) : 0}%`;
     },
     done: name => {
@@ -58,6 +59,11 @@ export function createToast(opts: { site: string; lang: Lang; theme: Theme }, do
       sub.textContent = name;
       fill.style.width = '100%';
       setTimeout(close, 4500);
+    },
+    pause: message => {
+      title.textContent = t(opts.lang, 'p_pausedTitle');
+      sub.textContent = message;
+      setTimeout(close, 20_000);
     },
     fail: message => {
       box.classList.add('err');
