@@ -74,17 +74,18 @@ async function saveTab(tabId: number | undefined) {
 export default defineBackground(() => {
   const createMenu = async () => {
     const s = await loadSettings();
+    if (!browser.contextMenus) return; // Firefox для Android: контекстного меню расширений нет
     await browser.contextMenus.removeAll();
     browser.contextMenus.create({ id: MENU_ID, title: t(resolveLang(s.lang), 'menu'), contexts: ['page', 'action'] });
   };
   browser.runtime.onInstalled.addListener(createMenu);
   browser.runtime.onStartup.addListener(createMenu);
 
-  browser.contextMenus.onClicked.addListener((info, tab) => {
+  browser.contextMenus?.onClicked.addListener((info, tab) => {
     if (info.menuItemId === MENU_ID) void saveTab(tab?.id);
   });
 
-  browser.commands.onCommand.addListener(async cmd => {
+  browser.commands?.onCommand.addListener(async cmd => {
     if (cmd !== 'save-page') return;
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     void saveTab(tab?.id);

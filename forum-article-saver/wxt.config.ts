@@ -11,12 +11,18 @@ export default defineConfig({
     // Остаётся доступ к GitHub API и сырым файлам: запросы идут только через фон и только на эти два хоста.
     'build:manifestGenerated': (_wxt, manifest) => {
       manifest.host_permissions = ['https://api.github.com/*', 'https://raw.githubusercontent.com/*'];
+      // Самораспространение (подписанный на AMO unlisted-XPI): Firefox сам проверяет обновления по этой ссылке.
+      // В версию для каталога AMO её класть нельзя — там обновления ведёт сам каталог.
+      if (process.env.FAS_SELF_UPDATE) {
+        const gecko = (manifest.browser_specific_settings ??= {}).gecko as Record<string, unknown>;
+        gecko.update_url = 'https://github.com/Basil-AS/Dowloaders/releases/latest/download/updates.json';
+      }
     },
   },
   manifest: {
     name: 'Forum & Article Saver',
     description: 'Сохраняет статьи, темы и комментарии (Хабр, Reddit, 4PDA, Discourse), репозитории, issues и обсуждения GitHub в TXT / Markdown / JSON.',
-    version: '3.5.1',
+    version: '3.6.0',
     // Только activeTab: расширение трогает страницу лишь по клику / хоткею / из меню.
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus'],
     // Нужно только для режима «все вкладки» (запрашивается по кнопке).
@@ -32,6 +38,8 @@ export default defineConfig({
         id: 'forum-article-saver@basil-as.github.io',
         data_collection_permissions: { required: ['none'], optional: ['authenticationInfo'] },
       },
+      // Firefox для Android (с 142: там поддерживаются data_collection_permissions)
+      gecko_android: { strict_min_version: '142.0' },
     },
   },
 });

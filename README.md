@@ -11,7 +11,7 @@ https://www.bettercap.org/project/introduction/
 
 ## Расширение для Chrome и Firefox (`forum-article-saver/`)
 
-Сохраняет текущую страницу в **TXT / Markdown / JSON**. Версия 3.2. Стек: WXT + TypeScript + Preact, Manifest V3 (один код для Chrome и Firefox), Vitest + Playwright.
+Сохраняет текущую страницу в **TXT / Markdown / JSON**. Версия 3.6. Firefox для Android 142+ (см. BUILD.md). Стек: WXT + TypeScript + Preact, Manifest V3 (один код для Chrome и Firefox), Vitest + Playwright.
 
 | Площадка | Что берёт |
 |---|---|
