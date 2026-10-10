@@ -1,0 +1,43 @@
+# Выпуск для Firefox: подпись на AMO (unlisted) → XPI и updates.json в GitHub Release.
+# Firefox сам обновляется по update_url из манифеста (releases/latest/download/updates.json).
+# Нужны секреты репозитория AMO_JWT_ISSUER и AMO_JWT_SECRET (addons.mozilla.org → Tools → Manage API Keys).
+name: forum-article-saver-release
+on:
+  push:
+    tags: ['fas-v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: forum-article-saver } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: forum-article-saver/package-lock.json }
+      - run: npm ci
+      - run: npm test
+      - name: Сборка Firefox с update_url
+        run: FAS_SELF_UPDATE=1 npm run build:firefox
+      - name: Подпись на AMO (unlisted)
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          npx web-ext sign -s dist/firefox-mv3 -a dist/signed --channel unlisted \
+            --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
+      - name: updates.json и Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          XPI=$(ls dist/signed/*.xpi | head -1)
+          NAME="forum-article-saver-$VER.xpi"
+          cp "$XPI" "dist/$NAME"
+          node -e "
+            const id='forum-article-saver@basil-as.github.io', v='$VER';
+            const link='https://github.com/Basil-AS/Dowloaders/releases/download/fas-v'+v+'/$NAME';
+            require('fs').writeFileSync('dist/updates.json', JSON.stringify({addons:{[id]:{updates:[{version:v,update_link:link}]}}},null,2));
+          "
+          gh release create "fas-v$VER" "dist/$NAME" dist/updates.json --repo "$GITHUB_REPOSITORY" --title "Forum & Article Saver $VER" --latest

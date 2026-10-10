@@ -37,7 +37,7 @@ export function Options() {
 
   useEffect(() => {
     void ghToken.get().then(setToken);
-    void browser.commands.getAll().then(cs => setShortcut(cs.find(c => c.name === 'save-page')?.shortcut || ''));
+    void browser.commands?.getAll().then(cs => setShortcut(cs.find(c => c.name === 'save-page')?.shortcut || ''));
   }, []);
 
   if (!s) return null;

@@ -15,3 +15,9 @@ npm run zip           # (опционально) dist/forum-article-saver-<ве�
 к внутренностям этих двух библиотек; в коде самого расширения `innerHTML` не используется.
 
 Проверка: `npm run typecheck && npm test` (юнит-тесты), `npm run e2e` (нужен Chromium).
+
+## Firefox для Android и автообновление
+
+- Android: Firefox 142+. Контекстного меню и горячих клавиш там нет — только кнопка расширения (меню «⋮ → Расширения»). На обычном (release) Firefox для Android ставятся только дополнения из каталога AMO (или из своей коллекции в Beta/Nightly); Chrome для Android расширения не поддерживает.
+- Автообновление через AMO: отправьте сборку `npm run build:firefox` (без `FAS_SELF_UPDATE`) в каталог addons.mozilla.org (listed) — обновления и Android-установка тогда идут штатно.
+- Автообновление из репозитория без каталога: добавьте секреты `AMO_JWT_ISSUER` / `AMO_JWT_SECRET`, создайте тег `fas-vX.Y.Z` (должен совпадать с версией в package.json) — workflow `forum-article-saver-release` соберёт с `FAS_SELF_UPDATE=1`, подпишет на AMO (unlisted) и выложит XPI + `updates.json` в Release. Установленная копия сама проверяет `releases/latest/download/updates.json`.

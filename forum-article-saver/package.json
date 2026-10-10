@@ -1,7 +1,7 @@
 {
   "name": "forum-article-saver",
   "private": true,
-  "version": "3.5.1",
+  "version": "3.6.0",
   "type": "module",
   "description": "Сохраняет статьи, темы и комментарии (Хабр, Reddit, 4PDA, Discourse) в TXT / Markdown / JSON",
   "scripts": {
