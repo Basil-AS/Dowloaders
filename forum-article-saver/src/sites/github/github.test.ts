@@ -154,7 +154,7 @@ describe('дайджест репозитория', () => {
     const d = await github.extract(ctxFor('https://github.com/o/r', f), { ...o, mode: 'digest' }, noop);
     const txt = formatDoc(d, { ...o, format: 'txt' });
     expect(txt).toMatch(/Токенов \(оценка\): ~\d+\n/);
-    expect(txt.replace(/~\d+/, '~N')).toBe(`o/r\nhttps://github.com/o/r\nВетка: main (abc1234) | Файлов: 2 | Токенов (оценка): ~N\n\nr/\n  src/\n    a.ts\n  README.md\n\n### README.md\nhi\n\n### src/a.ts\nconst x = "\`\`\`";\n`);
+    expect(txt.replace(/~\d+/, '~N')).toBe(`o/r\nhttps://github.com/o/r\nВетка: main (abc1234) | Файлов: 2 | Токенов (оценка): ~N\n\nСтруктура:\nr/\n  src/\n    a.ts\n  README.md\n\n=== FILE: README.md ===\nhi\n\n=== FILE: src/a.ts ===\nconst x = "\`\`\`";\n`);
     const md = formatDoc(d, { ...o, format: 'md' });
     expect(md).toContain('## src/a.ts\n````ts\nconst x = "```";\n````'); // забор длиннее кавычек внутри
     const js = JSON.parse(formatDoc(d, { ...o, format: 'json' }));
