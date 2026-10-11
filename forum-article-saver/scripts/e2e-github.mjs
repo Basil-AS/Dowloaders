@@ -17,7 +17,7 @@ const { ctx, mock, close } = await launchLocal();
 const st = mock.st;
 const GH = 'https://github.com';
 
-const saveBtn = pop => pop.getByRole('button', { name: /^(Сохранить как|Save as)/ });
+const saveBtn = pop => pop.getByRole('button', { name: /^(Сохранить как|Save as|Скачать дайджест|Download digest)/ });
 /** Нажимает «Сохранить», ждёт файл и итог в popup. */
 async function download(page, pop) {
   const dl = page.waitForEvent('download', { timeout: 20000 });

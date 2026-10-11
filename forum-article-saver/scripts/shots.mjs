@@ -12,7 +12,7 @@ for (const [scheme, locale] of [['light', 'ru-RU'], ['dark', 'ru-RU'], ['light',
     const { pop } = await openPopup(ctx, SITES[name].url, { width: 380, height: 640 });
     await pop.waitForTimeout(300);
     if (name === 'habr') {
-      await pop.getByRole('button').filter({ hasText: /Сохранить как|Save as/ }).click().catch(() => {});
+      await pop.getByRole('button').filter({ hasText: /Сохранить как|Save as|Скачать дайджест|Download digest/ }).click().catch(() => {});
       await pop.waitForSelector('.status p', { timeout: 8000 }).catch(() => {});
       await pop.waitForTimeout(400);
     }
