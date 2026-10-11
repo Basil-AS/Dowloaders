@@ -49,7 +49,7 @@ await opt.locator('#o-tpl').blur();
   let out;
   await check('дайджест: структура + файлы, мусор отфильтрован, токены оценены', async () => {
     out = await download(page, pop);
-    assert.match(out.text, /^o\/r\nhttps:\/\/github\.com\/o\/r\nВетка: main \(abc1234\) \| Файлов: 4 \| Токенов \(оценка\): ~\d+\n\nr\/\n  docs\/\n    guide\.md\n  src\/\n    a\.ts\n    b\.ts\n  README\.md\n\n### README\.md\n# Демо/);
+    assert.match(out.text, /^o\/r\nhttps:\/\/github\.com\/o\/r\nВетка: main \(abc1234\) \| Файлов: 4 \| Токенов \(оценка\): ~\d+\n\nСтруктура:\nr\/\n  docs\/\n    guide\.md\n  src\/\n    a\.ts\n    b\.ts\n  README\.md\n\n=== FILE: README\.md ===\n# Демо/);
     assert.doesNotMatch(out.text, /node_modules|yarn\.lock|logo\.png|app\.min/);
     assert.match(out.msg, /Сохранено · 4 файла/);
   });
@@ -144,8 +144,8 @@ await check('без токена: одно обсуждение читается
     const dl = page.waitForEvent('download', { timeout: 20000 });
     await pop.getByRole('button', { name: 'Сохранить, что есть' }).click();
     const text = fs.readFileSync(await (await dl).path(), 'utf8');
-    assert.match(text, /### README\.md/);
-    assert.doesNotMatch(text, /### src\/b\.ts/);
+    assert.match(text, /=== FILE: README\.md/);
+    assert.doesNotMatch(text, /=== FILE: src\/b\.ts/);
     assert.match(text, /частично: 2 из 4/);
     assert.equal(st.rawCalls.length, before);
   });
@@ -156,8 +156,8 @@ await check('без токена: одно обсуждение читается
     st.rawCalls.length = 0;
     // новая пауза не нужна: просто запускаем сохранение ещё раз — скачанное берётся из кэша
     const out = await download(page, pop);
-    assert.match(out.text, /### src\/b\.ts/);
-    assert.match(out.text, /### docs\/guide\.md/);
+    assert.match(out.text, /=== FILE: src\/b\.ts/);
+    assert.match(out.text, /=== FILE: docs\/guide\.md/);
     assert.deepEqual(st.rawCalls.sort(), ['docs/guide.md', 'src/b.ts']);
   });
 }

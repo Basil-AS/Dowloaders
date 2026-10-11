@@ -22,7 +22,7 @@ export default defineConfig({
   manifest: {
     name: 'Forum & Article Saver',
     description: 'Сохраняет статьи, темы и комментарии (Хабр, Reddit, 4PDA, Discourse), репозитории, issues и обсуждения GitHub в TXT / Markdown / JSON.',
-    version: '3.6.1',
+    version: '3.6.2',
     // Только activeTab: расширение трогает страницу лишь по клику / хоткею / из меню.
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus'],
     // Нужно только для режима «все вкладки» (запрашивается по кнопке).

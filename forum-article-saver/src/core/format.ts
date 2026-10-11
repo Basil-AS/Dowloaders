@@ -88,12 +88,12 @@ const LANG: Record<string, string> = { ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx
 
 function repoBlocks(doc: ParsedDoc, lang: Lang, md: boolean): string[] {
   const out: string[] = [];
-  if (doc.tree) out.push(md ? `## ${t(lang, 'h_structure')}\n${fence(doc.tree)}\n${doc.tree}\n${fence(doc.tree)}` : doc.tree);
+  if (doc.tree) out.push(md ? `## ${t(lang, 'h_structure')}\n${fence(doc.tree)}\n${doc.tree}\n${fence(doc.tree)}` : `${t(lang, 'h_structure')}:\n${doc.tree}`);
   for (const f of doc.files ?? []) {
     if (md) {
       const fc = fence(f.content);
       out.push(`## ${f.path}\n${fc}${LANG[f.path.split('.').pop()?.toLowerCase() ?? ''] ?? ''}\n${f.content}\n${fc}`);
-    } else out.push(`### ${f.path}\n${f.content}`);
+    } else out.push(`=== FILE: ${f.path} ===\n${f.content}`); // не «###»: в самих файлах (Markdown) такие строки обычны
   }
   return out;
 }
