@@ -25,6 +25,14 @@ const bgFetch: typeof fetch = async (input, init) => {
     headers: init?.headers as Record<string, string> | undefined,
     body: typeof init?.body === 'string' ? init.body : undefined,
   } satisfies Msg)) as BgFetchResult | undefined;
+  // Фон не достучался (нет хост-прав, например в Firefox, пока не выданы): api.github.com и raw отдают CORS «*», пробуем из страницы без токена.
+  if (!r || r.status === 599) {
+    try {
+      return await globalThis.fetch(String(input), { method: init?.method, headers: init?.headers, body: typeof init?.body === 'string' ? init.body : undefined, credentials: 'omit' });
+    } catch {
+      if (!r) throw new Error('background unavailable');
+    }
+  }
   if (!r) throw new Error('background unavailable');
   return new Response(r.status === 204 || r.status === 304 ? null : r.body, { status: r.status, headers: r.headers });
 };

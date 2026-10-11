@@ -235,7 +235,11 @@ export function App() {
                 <input id="amt" type="range" min="1" max="100" value={s.percent} onInput={e => patch({ percent: Number(e.currentTarget.value) })} />
               </div>
             )}
-            {isDigest && <p class="muted small">{tr('p_repoHint')}</p>}
+            {isDigest && (
+              <p class="muted small">
+                {tr('p_repoHint')} {tr(`p_repoHint_${s.format}` as Key)}
+              </p>
+            )}
             {needsToken && <p class="warn small">{tr('p_tokenNeeded')}</p>}
           </section>
 
@@ -243,7 +247,7 @@ export function App() {
             <div class="actions">
               <button class="btn primary" disabled={running || needsToken} onClick={() => go('download')}>
                 <IconDownload />
-                {tr('p_save', { fmt: FORMAT_LABEL[s.format] })}
+                {tr(isDigest ? 'p_saveDigest' : 'p_save', { fmt: FORMAT_LABEL[s.format] })}
               </button>
               <button class="btn icon" disabled={running || needsToken} onClick={() => go('copy')} title={tr('p_copy')} aria-label={tr('p_copy')}>
                 <IconCopy />
