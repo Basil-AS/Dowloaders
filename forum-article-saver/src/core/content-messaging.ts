@@ -9,8 +9,8 @@ export class InjectError extends Error {
 }
 
 export interface ContentMessagingApi {
-  tabs: { sendMessage(tabId: number, message: Msg): Promise<unknown> };
-  scripting: { executeScript(options: { target: { tabId: number }; files: string[] }): Promise<unknown> };
+  sendMessage(tabId: number, message: Msg): Promise<unknown>;
+  inject(tabId: number, file: string): Promise<unknown>;
 }
 
 /** Не полагаемся на текст ошибки sendMessage: Chromium, Firefox и Orion формируют его по-разному.
@@ -21,7 +21,7 @@ export function createContentMessenger(api: ContentMessagingApi, contentFile: st
 
   const ping = async (tabId: number): Promise<boolean> => {
     try {
-      return (await api.tabs.sendMessage(tabId, { type: 'fas/ping' })) === true;
+      return (await api.sendMessage(tabId, { type: 'fas/ping' })) === true;
     } catch {
       return false;
     }
@@ -34,7 +34,7 @@ export function createContentMessenger(api: ContentMessagingApi, contentFile: st
 
     const job = (async () => {
       try {
-        await api.scripting.executeScript({ target: { tabId }, files: [contentFile] });
+        await api.inject(tabId, contentFile);
       } catch (e) {
         throw new InjectError((e as Error).message ?? String(e));
       }
@@ -53,7 +53,7 @@ export function createContentMessenger(api: ContentMessagingApi, contentFile: st
   return {
     async send<T>(tabId: number, msg: Msg): Promise<T> {
       await ensure(tabId);
-      const result = await api.tabs.sendMessage(tabId, msg);
+      const result = await api.sendMessage(tabId, msg);
       if (result === undefined) throw new Error('No response from content script (browser messaging API)');
       return result as T;
     },
