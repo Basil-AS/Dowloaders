@@ -3,6 +3,7 @@ import type { DocKind, ExtractOptions, Format, Progress, Theme } from './types';
 export type Action = 'download' | 'copy';
 
 export type Msg =
+  | { type: 'fas/ping' }
   | { type: 'fas/detect'; fallback: boolean }
   | { type: 'fas/run'; action: Action; opts: ExtractOptions; template: string; metaHeader: boolean; fallback: boolean; theme: Theme }
   | { type: 'fas/progress'; progress: Progress }

@@ -1,28 +1,16 @@
 import { browser } from 'wxt/browser';
 import { runPool } from './http';
+import { createContentMessenger, InjectError } from './content-messaging';
 import { CONTENT_FILE, type Action, type DetectResult, type Msg, type RunResult } from './messages';
 import { history, loadSettings, toExtractOptions } from './settings';
 import type { ExtractOptions, Settings } from './types';
+import { resolveActiveWebTabId } from './tab-target';
 
-/** Страницу нельзя обработать: служебная, закрытая политикой или нет прав (activeTab не выдан). */
-class InjectError extends Error {}
-
-const NO_RECEIVER = /receiving end|establish connection|no (matching )?(receiver|listener)/i;
-
-/** Шлёт сообщение content-скрипту; внедряет его, только если слушателя ещё нет. Любая другая ошибка пробрасывается как есть. */
-async function send<T>(tabId: number, msg: Msg): Promise<T> {
-  try {
-    return (await browser.tabs.sendMessage(tabId, msg)) as T;
-  } catch (e) {
-    if (!NO_RECEIVER.test((e as Error).message ?? '')) throw e;
-    try {
-      await browser.scripting.executeScript({ target: { tabId }, files: [CONTENT_FILE] });
-    } catch (inj) {
-      throw new InjectError((inj as Error).message);
-    }
-    return (await browser.tabs.sendMessage(tabId, msg)) as T;
-  }
-}
+/** Ping-проверка и внедрение без зависимости от текстов ошибок браузера. */
+const send = createContentMessenger({
+  sendMessage: (tabId, msg) => browser.tabs.sendMessage(tabId, msg),
+  inject: tabId => browser.scripting.executeScript({ target: { tabId }, files: [CONTENT_FILE] }),
+}, CONTENT_FILE).send;
 
 export const detect = (tabId: number, fallback = true) => send<DetectResult | null>(tabId, { type: 'fas/detect', fallback });
 
@@ -57,7 +45,12 @@ export async function runOnTab(tabId: number, action: Action, settings?: Setting
 
 /** Все вкладки окна с известными площадками (универсальный разбор статей не используется). */
 export async function saveAllTabs(settings: Settings, concurrency = 2): Promise<{ ok: number; total: number }> {
-  const tabs = (await browser.tabs.query({ currentWindow: true })).filter(t => t.id != null && /^https?:/.test(t.url ?? ''));
+  // Orion может считать popup отдельным окном: ищем последнее окно браузера.
+  const currentTabs = await browser.tabs.query({ currentWindow: true });
+  const activeId = await resolveActiveWebTabId(filter => browser.tabs.query(filter));
+  const active = currentTabs.find(t => t.id === activeId);
+  const tabsInWindow = active ? currentTabs : await browser.tabs.query({ lastFocusedWindow: true });
+  const tabs = tabsInWindow.filter(t => t.id != null && /^https?:/.test(t.url ?? ''));
   const results = await runPool(tabs, concurrency, tab => runOnTab(tab.id!, 'download', settings, {}, false));
   const supported = results.filter(r => !r.unsupported);
   return { ok: supported.filter(r => r.ok).length, total: supported.length };

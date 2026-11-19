@@ -10,6 +10,7 @@ import type { DocKind, ExtractOptions } from '../../core/types';
 import { IconCopy, IconDownload, IconGear } from '../../ui/icons';
 import { Radios } from '../../ui/Radios';
 import { fmtWhen, useHistory, useSettings } from '../../ui/hooks';
+import { resolveActiveWebTabId } from '../../core/tab-target';
 
 type Status = { kind: 'idle' | 'run' | 'ok' | 'err' | 'paused'; text: string };
 
@@ -25,7 +26,11 @@ const LIST_MODES = new Set(['issues', 'pulls', 'discussions']);
 
 async function currentTabId(): Promise<number | undefined> {
   const q = new URLSearchParams(location.search).get('tabId'); // для автотестов
-  return q ? Number(q) : (await browser.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+  if (q !== null) {
+    const id = Number(q);
+    return Number.isSafeInteger(id) && id >= 0 ? id : undefined;
+  }
+  return resolveActiveWebTabId(filter => browser.tabs.query(filter));
 }
 
 export function App() {
@@ -42,7 +47,7 @@ export function App() {
 
   // Вкладку ищем сразу, параллельно с загрузкой настроек; определение страницы ждёт только флаг generic.
   useEffect(() => {
-    void currentTabId().then(id => setTabId(id ?? null));
+    void currentTabId().then(id => setTabId(id ?? null), () => setTabId(null));
     void ghToken.get().then(t => setHasToken(!!t));
   }, []);
 
@@ -90,9 +95,10 @@ export function App() {
         setSite(d);
         setMode(d?.defaultMode);
       },
-      () => {
+      error => {
         setSite(null);
-        setStatus({ kind: 'err', text: tr('p_cantInject') });
+        const detail = (error as Error).message ?? String(error);
+        setStatus({ kind: 'err', text: `${tr('p_cantInject')} (${detail})` });
       },
     );
   }, [generic, tabId]);
@@ -130,18 +136,25 @@ export function App() {
     own.current = true;
     try {
       await finish(await runOnTab(tabId, action, s, { mode, ...over }), action);
+    } catch (e) {
+      setStatus({ kind: 'err', text: tr('p_failed', { msg: (e as Error).message ?? String(e) }) });
     } finally {
       own.current = false;
     }
   };
 
   const allTabs = async () => {
-    const origins = ['<all_urls>'];
-    if (!(await browser.permissions.contains({ origins })) && !(await browser.permissions.request({ origins }))) return;
-    setStatus({ kind: 'run', text: tr('p_saving') });
-    const { ok, total } = await saveAllTabs(s);
-    setProg(null);
-    setStatus(total ? { kind: ok ? 'ok' : 'err', text: tr('p_allTabsDone', { ok, total }) } : { kind: 'err', text: tr('p_allTabsNone') });
+    try {
+      const origins = ['<all_urls>'];
+      if (!(await browser.permissions.contains({ origins })) && !(await browser.permissions.request({ origins }))) return;
+      setStatus({ kind: 'run', text: tr('p_saving') });
+      const { ok, total } = await saveAllTabs(s);
+      setStatus(total ? { kind: ok ? 'ok' : 'err', text: tr('p_allTabsDone', { ok, total }) } : { kind: 'err', text: tr('p_allTabsNone') });
+    } catch (e) {
+      setStatus({ kind: 'err', text: tr('p_failed', { msg: (e as Error).message ?? String(e) }) });
+    } finally {
+      setProg(null);
+    }
   };
 
   const fileHint = site ? buildFilename(s.filenameTemplate, { title: site.title, site: site.label }, EXT[s.format]) : '';

@@ -3,6 +3,7 @@ import { runOnTab } from '../core/pipeline';
 import { loadSettings } from '../core/settings';
 import { resolveLang, t } from '../core/i18n';
 import { HostGate } from '../core/gate';
+import { resolveActiveWebTabId } from '../core/tab-target';
 import type { BgFetchResult, GateReply, Msg, TabPhase } from '../core/messages';
 
 const MENU_ID = 'fas-save';
@@ -87,8 +88,8 @@ export default defineBackground(() => {
 
   browser.commands?.onCommand.addListener(async cmd => {
     if (cmd !== 'save-page') return;
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    void saveTab(tab?.id);
+    const tabId = await resolveActiveWebTabId(filter => browser.tabs.query(filter));
+    void saveTab(tabId);
   });
 
   const drop = (id: number) => {
