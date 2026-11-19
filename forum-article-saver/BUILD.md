@@ -21,3 +21,13 @@ npm run zip           # (опционально) dist/forum-article-saver-<ве�
 - Android: Firefox 142+. Контекстного меню и горячих клавиш там нет — только кнопка расширения (меню «⋮ → Расширения»). На обычном (release) Firefox для Android ставятся только дополнения из каталога AMO (или из своей коллекции в Beta/Nightly); Chrome для Android расширения не поддерживает.
 - Автообновление через AMO: отправьте сборку `npm run build:firefox` (без `FAS_SELF_UPDATE`) в каталог addons.mozilla.org (listed) — обновления и Android-установка тогда идут штатно.
 - Автообновление из репозитория без каталога: добавьте секреты `AMO_JWT_ISSUER` / `AMO_JWT_SECRET`, создайте тег `fas-vX.Y.Z` (должен совпадать с версией в package.json) — workflow `forum-article-saver-release` соберёт с `FAS_SELF_UPDATE=1`, подпишет на AMO (unlisted) и выложит XPI + `updates.json` в Release. Установленная копия сама проверяет `releases/latest/download/updates.json`.
+
+## Orion (macOS): проверка сборки из исходников
+
+1. `npm ci && npm run build` — результат: `dist/chrome-mv3/`.
+2. В Orion откройте **Tools → Extensions → Install from Disk**, выберите ZIP из `npm run zip` или `manifest.json` распакованной сборки, если ваша версия Orion поддерживает такой импорт.
+3. В настройках сайта разрешите работу расширения и убедитесь, что режим Compatibility Mode выключен: он отключает расширения.
+4. Откройте обычную HTTPS-статью Habr, 4PDA или GitHub, нажмите на расширение и проверьте распознавание, копирование и скачивание.
+5. Если Orion сообщает, что расширения недоступны на внутренних страницах, откройте **Tools → Extensions → Console** и проверьте `tabs.query`, `scripting.executeScript` и `tabs.sendMessage`. Orion реализует WebExtensions поверх WebKit, поэтому это тест вручную, а не гарантия CI.
+
+`src/core/tab-target.ts` не выбирает случайную вкладку: запасной поиск среди окон разрешён только при единственном подходящем HTTP(S)-кандидате. `src/core/content-messaging.ts` проверяет наличие обработчика через `fas/ping` и не повторяет потенциально побочный запрос `fas/run`.
