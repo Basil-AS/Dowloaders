@@ -3,6 +3,7 @@ import { runOnTab } from '../core/pipeline';
 import { loadSettings } from '../core/settings';
 import { resolveLang, t } from '../core/i18n';
 import { HostGate } from '../core/gate';
+import { resolveActiveWebTabId } from '../core/tab-target';
 import type { BgFetchResult, GateReply, Msg, TabPhase } from '../core/messages';
 
 const MENU_ID = 'fas-save';
@@ -25,7 +26,8 @@ async function proxyFetch(m: Extract<Msg, { type: 'fas/fetch' }>): Promise<BgFet
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries(m.headers ?? {})) if (PASS_HEADERS.includes(k.toLowerCase())) headers[k] = v;
   const { ghToken } = (await browser.storage.local.get('ghToken')) as { ghToken?: string };
-  if (ghToken) headers.Authorization = u.hostname === 'api.github.com' ? `Bearer ${ghToken}` : `token ${ghToken}`;
+  // Не отправляем персональный токен на raw.githubusercontent.com: доступ к публичным файлам анонимный.
+  if (ghToken && u.hostname === 'api.github.com') headers.Authorization = `Bearer ${ghToken}`;
   try {
     const res = await fetch(u.href, { method: m.method === 'POST' ? 'POST' : m.method === 'HEAD' ? 'HEAD' : 'GET', headers, body: m.method === 'POST' ? m.body : undefined, credentials: 'omit', cache: 'no-store' });
     const out: Record<string, string> = {};
@@ -87,8 +89,8 @@ export default defineBackground(() => {
 
   browser.commands?.onCommand.addListener(async cmd => {
     if (cmd !== 'save-page') return;
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    void saveTab(tab?.id);
+    const tabId = await resolveActiveWebTabId(filter => browser.tabs.query(filter));
+    void saveTab(tabId);
   });
 
   const drop = (id: number) => {
