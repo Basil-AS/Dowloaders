@@ -9,7 +9,7 @@ import { resolveActiveWebTabId } from './tab-target';
 /** Ping-проверка и внедрение без зависимости от текстов ошибок браузера. */
 const send = createContentMessenger({
   sendMessage: (tabId, msg) => browser.tabs.sendMessage(tabId, msg),
-  inject: (tabId, file) => browser.scripting.executeScript({ target: { tabId }, files: [file] }),
+  inject: tabId => browser.scripting.executeScript({ target: { tabId }, files: [CONTENT_FILE] }),
 }, CONTENT_FILE).send;
 
 export const detect = (tabId: number, fallback = true) => send<DetectResult | null>(tabId, { type: 'fas/detect', fallback });
