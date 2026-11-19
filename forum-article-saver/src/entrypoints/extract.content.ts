@@ -82,6 +82,10 @@ export default defineContentScript({
     const onMessage = (raw: unknown, _sender: unknown, sendResponse: (r: unknown) => void) => {
       const msg = raw as Msg;
 
+      if (msg.type === 'fas/ping') {
+        sendResponse(true);
+        return;
+      }
       if (msg.type === 'fas/detect') {
         const c = ctx();
         const a = pickAdapter(ADAPTERS, c, { fallback: msg.fallback });
