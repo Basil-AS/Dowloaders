@@ -10,6 +10,10 @@ export default defineConfig({
     // runtime-скрипт тянет за собой host_permissions из matches (<all_urls>) — убираем: к страницам доступ только через activeTab.
     // Остаётся доступ к GitHub API и сырым файлам: запросы идут только через фон и только на эти два хоста.
     'build:manifestGenerated': (_wxt, manifest) => {
+      // Chrome Web Store counts UTF-16 code units and rejects descriptions > 132.
+      if (typeof manifest.description !== 'string' || manifest.description.length > 132) {
+        throw new Error('Invalid manifest.description: Chrome Web Store maximum is 132 characters');
+      }
       manifest.host_permissions = ['https://api.github.com/*', 'https://raw.githubusercontent.com/*'];
       // Самораспространение (подписанный на AMO unlisted-XPI): Firefox сам проверяет обновления по этой ссылке.
       // В версию для каталога AMO её класть нельзя — там обновления ведёт сам каталог.
@@ -21,8 +25,8 @@ export default defineConfig({
   },
   manifest: {
     name: 'Forum & Article Saver',
-    description: 'Сохраняет статьи, темы и комментарии (Хабр, Reddit, 4PDA, Discourse), репозитории, issues и обсуждения GitHub в TXT / Markdown / JSON.',
-    version: '3.6.4',
+    description: 'Сохраняйте статьи, обсуждения, комментарии и репозитории с Хабра, Reddit, 4PDA, форумов и GitHub в TXT, Markdown или JSON.',
+    version: '3.6.5',
     // Только activeTab: расширение трогает страницу лишь по клику / хоткею / из меню.
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus'],
     // Нужно только для режима «все вкладки» (запрашивается по кнопке).

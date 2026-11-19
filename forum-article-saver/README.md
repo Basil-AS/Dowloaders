@@ -1,4 +1,4 @@
-# Forum & Article Saver · 3.6.4
+# Forum & Article Saver · 3.6.5
 
 Расширение Manifest V3 для сохранения статей, форумных тем, комментариев и страниц GitHub в **TXT, Markdown и JSON**.
 
@@ -6,13 +6,13 @@
 
 ## Скачать готовые архивы
 
-- [Chrome / Chromium / Orion (попробовать первым)](releases/forum-article-saver-3.6.4-chrome.zip)
-- [Firefox MV3](releases/forum-article-saver-3.6.4-firefox.zip)
-- [Исходники сборки для AMO](releases/forum-article-saver-3.6.4-sources.zip)
+- [Chrome / Chromium / Orion (попробовать первым)](releases/forum-article-saver-3.6.5-chrome.zip)
+- [Firefox MV3](releases/forum-article-saver-3.6.5-firefox.zip)
+- [Исходники сборки для AMO](releases/forum-article-saver-3.6.5-sources.zip)
 
 Обычный Chrome устанавливает ZIP после распаковки через `chrome://extensions` → режим разработчика → «Загрузить распакованное». Firefox может загрузить ZIP как **временное расширение** через `about:debugging`; постоянная установка требует подписи AMO.
 
-**Orion (macOS):** использовать Chrome MV3 архив первым. В меню **Tools → Extensions → Install from Disk** установите подходящий архив/распакованную сборку (в зависимости от версии браузера). Проверьте разрешения для сайта и выключите Compatibility Mode. Исправления для выбора вкладки и обработки сообщений включены начиная с 3.6.4; проверка на WebKit/Orion обязательна и не заменяется CI в Chromium.
+**Orion (macOS):** использовать Chrome MV3 архив первым. В меню **Tools → Extensions → Install from Disk** установите подходящий архив/распакованную сборку (в зависимости от версии браузера). Проверьте разрешения для сайта и выключите Compatibility Mode. Исправления для выбора вкладки и обработки сообщений включены начиная с 3.6.5; проверка на WebKit/Orion обязательна и не заменяется CI в Chromium.
 
 ## Сборка из исходников
 
@@ -28,7 +28,7 @@ npm run zip
 python3 scripts/verify-release.py
 ```
 
-Результаты: `dist/forum-article-saver-3.6.4-{chrome,firefox,sources}.zip`. Для E2E тестов нужен Chromium (`npm run e2e`); инструкция для проверки ревьюерами: [BUILD.md](BUILD.md).
+Результаты: `dist/forum-article-saver-3.6.5-{chrome,firefox,sources}.zip`. Для E2E тестов нужен Chromium (`npm run e2e`); инструкция для проверки ревьюерами: [BUILD.md](BUILD.md).
 
 После успешных CI-проверок push в **main** GitHub Actions пересобирает и проверяет три ZIP-файла, заменяет архивы прежних версий в [releases/](releases/) и фиксирует их отдельным коммитом `build(fas): publish ...`. Проверки PR публикуют только временные Actions artifacts и не изменяют `main`.
 

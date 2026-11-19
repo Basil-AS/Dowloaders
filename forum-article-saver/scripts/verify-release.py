@@ -30,6 +30,18 @@ def verify(part: str) -> None:
             metadata = json.loads(archive.read("manifest.json"))
             if not any(name.endswith(".js") for name in names):
                 raise RuntimeError(f"{filename}: missing JavaScript bundles")
+        if part != "sources":
+            # Chrome Web Store validates the manifest description at upload time.
+            # Count UTF-16 units (the same as JavaScript String.length).
+            description = metadata.get("description", "")
+            desc_length = len(description.encode("utf-16-le")) // 2
+            if not description.strip() or desc_length > 132:
+                raise RuntimeError(
+                    f"{filename}: manifest.description has {desc_length} characters (max 132)"
+                )
+            name = metadata.get("name", "")
+            if not name or len(name.encode("utf-16-le")) // 2 > 45:
+                raise RuntimeError(f"{filename}: invalid manifest.name")
         if metadata.get("version") != version:
             raise RuntimeError(
                 f"{filename}: bundled version {metadata.get('version')!r} != {version!r}"

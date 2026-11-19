@@ -11,7 +11,7 @@ https://www.bettercap.org/project/introduction/
 
 ## Расширение для Chrome и Firefox (`forum-article-saver/`)
 
-Сохраняет текущую страницу в **TXT / Markdown / JSON**. Версия **3.6.4**. Firefox для Android 142+ (см. BUILD.md). Стек: WXT + TypeScript + Preact, Manifest V3 (один код для Chrome и Firefox), Vitest + Playwright.
+Сохраняет текущую страницу в **TXT / Markdown / JSON**. Версия **3.6.5**. Firefox для Android 142+ (см. BUILD.md). Стек: WXT + TypeScript + Preact, Manifest V3 (один код для Chrome и Firefox), Vitest + Playwright.
 
 | Площадка | Что берёт |
 |---|---|
@@ -42,7 +42,7 @@ https://www.bettercap.org/project/introduction/
 
 **Права.** `activeTab`: доступ к странице появляется по клику, горячей клавише или из меню. Плюс доступ к `api.github.com` и `raw.githubusercontent.com` для режимов GitHub (запросы идут только через фоновую страницу). «Все вкладки» запрашивает доступ ко всем сайтам отдельно, один раз.
 
-**Готовые сборки:** папка [`forum-article-saver/releases/`](forum-article-saver/releases/): `forum-article-saver-3.6.4-chrome.zip`, `forum-article-saver-3.6.4-firefox.zip`, `forum-article-saver-3.6.4-sources.zip` (исходники для AMO). Архивы автоматически пересобираются из `main` после успешных CI-проверок.
+**Готовые сборки:** папка [`forum-article-saver/releases/`](forum-article-saver/releases/): `forum-article-saver-3.6.5-chrome.zip`, `forum-article-saver-3.6.5-firefox.zip`, `forum-article-saver-3.6.5-sources.zip` (исходники для AMO). Архивы автоматически пересобираются из `main` после успешных CI-проверок.
 - Orion (macOS): сначала попробовать Chrome MV3 сборку; в настройках сайта разрешить расширение и отключить Compatibility Mode, который отключает расширения. Реальная совместимость требует проверки на Orion.
 - Chrome / Edge / Brave: распаковать zip → `chrome://extensions` → «Режим разработчика» → «Загрузить распакованное» → папка с `manifest.json`.
 - Firefox: `about:debugging#/runtime/this-firefox` → «Загрузить временное дополнение» → выбрать zip (до перезапуска браузера; постоянная установка требует подписи на addons.mozilla.org).
