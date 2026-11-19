@@ -7,7 +7,10 @@ import type { ExtractOptions, Settings } from './types';
 import { resolveActiveWebTabId } from './tab-target';
 
 /** Ping-проверка и внедрение без зависимости от текстов ошибок браузера. */
-const send = createContentMessenger(browser, CONTENT_FILE).send;
+const send = createContentMessenger({
+  sendMessage: (tabId, msg) => browser.tabs.sendMessage(tabId, msg),
+  inject: (tabId, file) => browser.scripting.executeScript({ target: { tabId }, files: [file] }),
+}, CONTENT_FILE).send;
 
 export const detect = (tabId: number, fallback = true) => send<DetectResult | null>(tabId, { type: 'fas/detect', fallback });
 
