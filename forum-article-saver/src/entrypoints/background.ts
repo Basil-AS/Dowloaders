@@ -26,8 +26,7 @@ async function proxyFetch(m: Extract<Msg, { type: 'fas/fetch' }>): Promise<BgFet
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries(m.headers ?? {})) if (PASS_HEADERS.includes(k.toLowerCase())) headers[k] = v;
   const { ghToken } = (await browser.storage.local.get('ghToken')) as { ghToken?: string };
-  // Не отправляем персональный токен на raw.githubusercontent.com: доступ к публичным файлам анонимный.
-  if (ghToken && u.hostname === 'api.github.com') headers.Authorization = `Bearer ${ghToken}`;
+  if (ghToken) headers.Authorization = u.hostname === 'api.github.com' ? `Bearer ${ghToken}` : `token ${ghToken}`;
   try {
     const res = await fetch(u.href, { method: m.method === 'POST' ? 'POST' : m.method === 'HEAD' ? 'HEAD' : 'GET', headers, body: m.method === 'POST' ? m.body : undefined, credentials: 'omit', cache: 'no-store' });
     const out: Record<string, string> = {};
