@@ -1,4 +1,6 @@
 name: forum-article-saver
+permissions:
+  contents: write # Needed only to commit verified versioned archives back to main.
 on:
   push:
     paths: ['forum-article-saver/**', '.github/workflows/forum-article-saver.yml']
@@ -21,7 +23,7 @@ jobs:
       - name: Package installable extensions for manual browser testing
         if: success()
         run: npm run zip
-      - name: Upload Chrome and Firefox builds
+      - name: Upload verified archives as CI artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -29,3 +31,30 @@ jobs:
           path: forum-article-saver/dist/forum-article-saver-*.zip
           if-no-files-found: error
           retention-days: 14
+
+      - name: Verify Chrome, Firefox, and source ZIP archives
+        run: python3 scripts/verify-release.py
+
+      # Only main pushes publish tracked binaries. GITHUB_TOKEN pushes do not retrigger Actions.
+      # PRs are tested and packaged, but never change the repository.
+      - name: Update versioned release archives in main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          mkdir -p releases
+          find releases -maxdepth 1 -type f -name 'forum-article-saver-*.zip' -delete
+          for PART in chrome firefox sources; do
+            cp "dist/forum-article-saver-${VERSION}-${PART}.zip" releases/
+          done
+          cd ..
+          git add -A -- forum-article-saver/releases
+          if git diff --cached --quiet; then
+            echo "Release archives are already up to date."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "build(fas): publish ${VERSION} archives [skip ci]"
+            git push origin HEAD:main
+          fi
